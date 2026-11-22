@@ -151,6 +151,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               }
               className="w-full min-h-[44px] rounded-xl bg-[#101820] border border-white/15 px-3 text-sm text-white focus:outline-none focus:border-emerald-500"
             >
+              <option value="wa-auto">WA Status Anti-Pecah (&le; 14.5 MB)</option>
               <option value="auto-hd">Otomatis HD (CRF 19)</option>
               <option value="6m">6 Mbps</option>
               <option value="8m">8 Mbps</option>

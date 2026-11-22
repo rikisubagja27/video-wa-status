@@ -10,7 +10,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   saveHistory: true,
   autoCleanTemp: true,
   defaultCodec: 'h264',
-  defaultBitrate: 'auto-hd',
+  defaultBitrate: 'wa-auto',
 };
 
 export function loadAppSettings(): AppSettings {
@@ -23,9 +23,10 @@ export function loadAppSettings(): AppSettings {
       autoCleanTemp: typeof parsed.autoCleanTemp === 'boolean' ? parsed.autoCleanTemp : DEFAULT_APP_SETTINGS.autoCleanTemp,
       defaultCodec: parsed.defaultCodec === 'h265' ? 'h265' : 'h264',
       defaultBitrate:
-        parsed.defaultBitrate && ['auto-hd', '6m', '8m', '12m'].includes(parsed.defaultBitrate)
+        parsed.defaultBitrate &&
+        ['wa-auto', 'auto-hd', '6m', '8m', '12m'].includes(parsed.defaultBitrate)
           ? parsed.defaultBitrate
-          : DEFAULT_APP_SETTINGS.defaultBitrate,
+          : 'wa-auto',
     };
   } catch {
     return DEFAULT_APP_SETTINGS;

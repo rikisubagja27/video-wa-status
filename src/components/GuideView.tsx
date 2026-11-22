@@ -121,13 +121,16 @@ export const GuideView: React.FC = () => {
         </div>
         <div className="space-y-3 text-sm text-slate-300 leading-relaxed">
           <p>
-            WhatsApp selalu menjalankan proses kompresi sisi server saat pengguna mengunggah Status demi menghemat bandwidth penerima. Tidak ada aplikasi pihak ketiga yang dapat memaksa server WhatsApp menonaktifkan kompresi tersebut sepenuhnya.
+            WhatsApp selalu menjalankan pemrosesan sisi server saat video diunggah ke Status. Tidak ada aplikasi pihak ketiga yang dapat menonaktifkan kompresi server WhatsApp sepenuhnya.
           </p>
           <p>
-            Namun, hasil akhir Status menjadi jauh lebih buram apabila video sumber berformat 4K atau bitrate ekstrem sehingga dikompresi ulang secara agresif oleh WhatsApp. Dengan menyiapkan file <strong>MP4 H.264 + Audio AAC</strong> pada resolusi <strong>Full HD 1080p</strong> (atau mempertahankan file asli yang sudah sesuai melalui <strong>Original Preserve Mode</strong>), detail ketajaman video terjaga jauh lebih baik.
+            Video menjadi <strong>pecah</strong> dan <strong>tidak mulus</strong> ketika file yang diunggah melebihi ambang ukuran Status (~15–16 MB), memiliki lonjakan bitrate ekstrem, atau memakai <em>Variable Frame Rate</em> (VFR) &amp; warna HDR bawaan kamera iPhone — sehingga WhatsApp memaksa re-encoding berat ke bitrate rendah dan menjatuhkan frame secara acak.
+          </p>
+          <p>
+            Dengan memilih profil <strong>WA Status Anti-Pecah</strong> (H.264 High + Constant Frame Rate + BT.709 + ukuran terkunci &le; 14.5 MB), video sudah berada di titik optimal sebelum menyentuh WhatsApp sehingga ketajaman dan kehalusan gerakan jauh lebih terjaga.
           </p>
           <p className="text-xs text-slate-400">
-            Tip tambahan: Di aplikasi WhatsApp &rarr; Pengaturan &rarr; Penyimpanan dan data &rarr; Kualitas unggahan media, pilih opsi <strong>Kualitas HD</strong> bila tersedia di perangkat Anda.
+            Langkah wajib di aplikasi WhatsApp: buka Pengaturan &rarr; Penyimpanan dan data &rarr; Kualitas unggahan media &rarr; pilih <strong>Kualitas HD</strong>, dan ketuk ikon <strong>HD</strong> di layar pratinjau Status jika tersedia sebelum mengirim.
           </p>
         </div>
       </section>

@@ -1,12 +1,12 @@
 export type TabId = 'home' | 'optimizer' | 'history' | 'guide' | 'settings';
 
-export type QualityPreset = 'original' | '1080p' | '720p' | '4k';
+export type QualityPreset = 'wa-sweetspot' | 'original' | '1080p' | '720p' | '4k';
 
 export type VideoCodec = 'h264' | 'h265';
 
 export type AudioMode = 'aac-192' | 'aac-128' | 'copy';
 
-export type BitrateMode = 'auto-hd' | '6m' | '8m' | '12m';
+export type BitrateMode = 'wa-auto' | 'auto-hd' | '6m' | '8m' | '12m';
 
 export type FpsOption = 'original' | '30' | '60';
 
@@ -52,6 +52,8 @@ export interface OptimizationSettings {
   audio: AudioMode;
   bitrate: BitrateMode;
   fps: FpsOption;
+  enforceCfr: boolean;
+  lanczosSharpen: boolean;
 }
 
 export interface OptimizationResult {

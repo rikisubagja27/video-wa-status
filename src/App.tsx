@@ -71,11 +71,13 @@ export default function App() {
 
   const [optimizerSettings, setOptimizerSettings] = useState<OptimizationSettings>(() => ({
     mode: 'optimize',
-    quality: '1080p',
+    quality: 'wa-sweetspot',
     codec: loadAppSettings().defaultCodec,
     audio: 'aac-192',
     bitrate: loadAppSettings().defaultBitrate,
-    fps: 'original',
+    fps: '30',
+    enforceCfr: true,
+    lanczosSharpen: true,
   }));
   const [optimizationResult, setOptimizationResult] = useState<OptimizationResult | null>(null);
 
@@ -140,6 +142,8 @@ export default function App() {
           audio: 'aac-192',
           bitrate: rec.recommendedBitrate,
           fps: rec.recommendedFps,
+          enforceCfr: true,
+          lanczosSharpen: true,
         });
       } catch (err) {
         URL.revokeObjectURL(nextUrl);

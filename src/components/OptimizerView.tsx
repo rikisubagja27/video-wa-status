@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   ArrowLeftRight,
   Check,
+  CheckCircle2,
   Cpu,
   FolderOpen,
   Play,
@@ -24,6 +25,7 @@ import type {
 } from '../types/video';
 import {
   computeTargetDimensions,
+  computeWhatsAppSweetSpotKbps,
   processVideoWithFFmpeg,
   resetFFmpegInstance,
 } from '../utils/ffmpegProcessor';
@@ -109,6 +111,13 @@ export const OptimizerView: React.FC<OptimizerViewProps> = ({
     metadata.width,
     metadata.height,
     settings.quality,
+    metadata.durationSec,
+  );
+  const targetAudioKbps = settings.audio === 'aac-128' ? 128 : 192;
+  const sweetSpotKbps = computeWhatsAppSweetSpotKbps(
+    metadata.durationSec,
+    targetAudioKbps,
+    Math.min(targetPreviewDims.width, targetPreviewDims.height),
   );
 
   const applyRecommendedSettings = () => {
@@ -120,6 +129,8 @@ export const OptimizerView: React.FC<OptimizerViewProps> = ({
       audio: 'aac-192',
       bitrate: recommendation.recommendedBitrate,
       fps: recommendation.recommendedFps,
+      enforceCfr: true,
+      lanczosSharpen: true,
     });
   };
 
@@ -187,6 +198,14 @@ export const OptimizerView: React.FC<OptimizerViewProps> = ({
     disabled?: boolean;
   }> = [
     {
+      id: 'wa-sweetspot',
+      label: 'WA Status Anti-Pecah',
+      detail:
+        metadata.durationSec > 24
+          ? '720p Lanczos + CFR + Target <= 14.5 MB (hindari pecah di klip panjang)'
+          : '1080p Lanczos + CFR + Target <= 14.5 MB (sweet spot Status WA)',
+    },
+    {
       id: 'original',
       label: 'Resolusi Asli',
       detail: `${metadata.width}×${metadata.height} (Tanpa ubah skala)`,
@@ -197,20 +216,20 @@ export const OptimizerView: React.FC<OptimizerViewProps> = ({
       detail:
         shortSide <= 1080
           ? 'Sesuai sumber (tanpa upscaling)'
-          : 'Direkomendasikan untuk Status WA',
+          : 'Downscale presisi ke 1080p',
     },
     {
       id: '720p',
       label: 'HD 720p',
-      detail: 'Ringan & cepat diproses iPhone',
+      detail: 'Paling ringan & minim artefak blok pada aksi cepat',
     },
     {
       id: '4k',
       label: '4K UHD',
       detail: !sourceSupports4K
-        ? 'Sumber di bawah 4K (hindari upscaling)'
+        ? 'Sumber < 4K (hindari upscaling)'
         : !capabilities.supports4KProcessing
-          ? 'RAM iOS/perangkat terbatas untuk 4K WASM'
+          ? 'RAM iOS terbatas untuk 4K WASM'
           : 'Pertahankan 2160p penuh',
       disabled: !sourceSupports4K || !capabilities.supports4KProcessing,
     },
@@ -220,6 +239,9 @@ export const OptimizerView: React.FC<OptimizerViewProps> = ({
     result && metadata.sizeBytes > 0
       ? Math.round(((result.sizeBytes - metadata.sizeBytes) / metadata.sizeBytes) * 100)
       : 0;
+
+  const resultSizeMb = result ? result.sizeBytes / (1024 * 1024) : 0;
+  const isResultInWaSafeZone = resultSizeMb > 0 && resultSizeMb <= 15.5;
 
   return (
     <div className="space-y-6">
@@ -268,7 +290,7 @@ export const OptimizerView: React.FC<OptimizerViewProps> = ({
               )}
             </div>
             <p className="mt-1.5 text-xs text-slate-300 leading-relaxed">
-              Tanpa encoding ulang, tanpa menurunkan resolusi, bitrate, FPS, ataupun audio. Cocok untuk video MP4 H.264 yang sudah rapi.
+              Tanpa encoding ulang, tanpa menurunkan resolusi, bitrate, FPS, ataupun audio. Cocok jika file sudah di bawah ~15 MB MP4 H.264.
             </p>
           </button>
 
@@ -291,7 +313,7 @@ export const OptimizerView: React.FC<OptimizerViewProps> = ({
               )}
             </div>
             <p className="mt-1.5 text-xs text-slate-300 leading-relaxed">
-              Konversi lokal ke MP4 H.264/AAC berkualitas tinggi, downscale presisi tanpa upscaling, dan penyesuaian bitrate untuk Status WA.
+              Menstabilkan frame rate (CFR), mengunci bitrate di zona aman Status WA (&le; 14.5 MB), dan menyamakan warna BT.709 agar tidak pecah &amp; patah-patah.
             </p>
           </button>
         </div>
@@ -316,8 +338,13 @@ export const OptimizerView: React.FC<OptimizerViewProps> = ({
           <p className="text-sm text-slate-300 leading-relaxed">
             Seluruh parameter asli (<span className="font-mono">{metadata.width}×{metadata.height}</span>,{' '}
             <span className="font-mono">{formatBytes(metadata.sizeBytes)}</span>,{' '}
-            {metadata.fps ? <span className="font-mono">{metadata.fps} fps</span> : 'FPS asli'}, audio asli) dipertahankan 100% identik tanpa re-encoding berulang.
+            {metadata.fps ? <span className="font-mono">{metadata.fps} fps</span> : 'FPS asli'}, audio asli) dipertahankan 100% identik.
           </p>
+          {metadata.sizeBytes > 15.5 * 1024 * 1024 && (
+            <p className="text-xs text-amber-300 bg-amber-500/10 border border-amber-500/25 rounded-xl px-4 py-3">
+              Peringatan: Ukuran file asli ({formatBytes(metadata.sizeBytes)}) di atas ~15.5 MB. Jika langsung diunggah ke Status WA, WhatsApp biasanya akan mengompres ulang secara berat hingga video terlihat pecah. Disarankan memakai <strong>Smart HD Optimizer &rarr; WA Status Anti-Pecah</strong>.
+            </p>
+          )}
           <ExportActionBar
             file={sourceFile}
             labelPrefix="Video Asli"
@@ -330,15 +357,16 @@ export const OptimizerView: React.FC<OptimizerViewProps> = ({
         <section className="rounded-2xl bg-[#131B22] border border-white/10 p-5 sm:p-6 space-y-6">
           {/* Quality Preset */}
           <div className="space-y-3">
-            <div className="flex items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <label className="text-sm font-semibold text-white">
-                Target Resolusi Output
+                Profil Resolusi &amp; Kualitas
               </label>
               <span className="font-mono text-xs text-emerald-400">
                 Output: {targetPreviewDims.width}×{targetPreviewDims.height}
+                {settings.bitrate === 'wa-auto' ? ` · ~${(sweetSpotKbps / 1000).toFixed(1)} Mbps` : ''}
               </span>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {qualityOptions.map((opt) => {
                 const selected = settings.quality === opt.id;
                 return (
@@ -346,8 +374,14 @@ export const OptimizerView: React.FC<OptimizerViewProps> = ({
                     key={opt.id}
                     type="button"
                     disabled={opt.disabled || isProcessing}
-                    onClick={() => onChangeSettings({...settings, quality: opt.id})}
-                    className={`min-h-[60px] text-left p-3.5 rounded-xl border transition ${
+                    onClick={() =>
+                      onChangeSettings({
+                        ...settings,
+                        quality: opt.id,
+                        bitrate: opt.id === 'wa-sweetspot' ? 'wa-auto' : settings.bitrate,
+                      })
+                    }
+                    className={`min-h-[68px] text-left p-3.5 rounded-xl border transition ${
                       opt.disabled
                         ? 'opacity-45 cursor-not-allowed border-white/5 bg-[#0D1319]'
                         : selected
@@ -356,7 +390,7 @@ export const OptimizerView: React.FC<OptimizerViewProps> = ({
                     }`}
                   >
                     <p className="text-sm font-semibold text-white">{opt.label}</p>
-                    <p className="mt-1 text-xs text-slate-400">{opt.detail}</p>
+                    <p className="mt-1 text-xs text-slate-400 leading-snug">{opt.detail}</p>
                   </button>
                 );
               })}
@@ -378,7 +412,7 @@ export const OptimizerView: React.FC<OptimizerViewProps> = ({
                 }
                 className="w-full min-h-[44px] rounded-xl bg-[#101820] border border-white/15 px-3 text-sm text-white focus:outline-none focus:border-emerald-500"
               >
-                <option value="h264">H.264 / AVC (Universal)</option>
+                <option value="h264">H.264 High + BT.709 (Terbaik untuk WA)</option>
                 <option value="h265">H.265 / HEVC (Jika didukung)</option>
               </select>
             </div>
@@ -397,7 +431,7 @@ export const OptimizerView: React.FC<OptimizerViewProps> = ({
                 className="w-full min-h-[44px] rounded-xl bg-[#101820] border border-white/15 px-3 text-sm text-white focus:outline-none focus:border-emerald-500"
               >
                 <option value="aac-192">AAC 192 kbps (Kualitas Tinggi)</option>
-                <option value="aac-128">AAC 128 kbps (Standar)</option>
+                <option value="aac-128">AAC 128 kbps (Hemat Bitrate Video)</option>
                 <option value="copy">Salin Audio Asli (Copy)</option>
               </select>
             </div>
@@ -415,10 +449,13 @@ export const OptimizerView: React.FC<OptimizerViewProps> = ({
                 }
                 className="w-full min-h-[44px] rounded-xl bg-[#101820] border border-white/15 px-3 text-sm text-white focus:outline-none focus:border-emerald-500"
               >
-                <option value="auto-hd">Otomatis HD (CRF 19)</option>
-                <option value="6m">6 Mbps (Efisien)</option>
+                <option value="wa-auto">
+                  Anti-Pecah WA (&le; 14.5 MB · ~{(sweetSpotKbps / 1000).toFixed(1)} Mbps)
+                </option>
+                <option value="auto-hd">Otomatis HD (CRF 19 · Maks 8 Mbps)</option>
+                <option value="6m">6 Mbps (VBV Terkendali)</option>
                 <option value="8m">8 Mbps (HD Tajam)</option>
-                <option value="12m">12 Mbps (Maksimum Detail)</option>
+                <option value="12m">12 Mbps (Maksimum Lokal)</option>
               </select>
             </div>
 
@@ -435,22 +472,61 @@ export const OptimizerView: React.FC<OptimizerViewProps> = ({
                 }
                 className="w-full min-h-[44px] rounded-xl bg-[#101820] border border-white/15 px-3 text-sm text-white focus:outline-none focus:border-emerald-500"
               >
-                <option value="original">Pertahankan FPS Asli</option>
-                <option value="30">30 fps (Stabil Status WA)</option>
+                <option value="30">30 fps (Paling Mulus &amp; Stabil di Status WA)</option>
                 <option
                   value="60"
                   disabled={metadata.fps !== null && metadata.fps < 50}
                 >
-                  60 fps {metadata.fps !== null && metadata.fps < 50 ? '(Sumber <60fps)' : ''}
+                  60 fps {metadata.fps !== null && metadata.fps < 50 ? '(Sumber <60fps)' : '(Butuh bitrate lebih tinggi)'}
                 </option>
+                <option value="original">Pertahankan FPS Asli</option>
               </select>
             </div>
+          </div>
+
+          {/* Smoothness & Sharpness Toggles */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <label className="flex items-start gap-3 p-3.5 rounded-xl bg-[#101820] border border-white/10 cursor-pointer">
+              <input
+                type="checkbox"
+                disabled={isProcessing}
+                checked={settings.enforceCfr}
+                onChange={(e) =>
+                  onChangeSettings({...settings, enforceCfr: e.target.checked})
+                }
+                className="mt-0.5 w-5 h-5 accent-emerald-500 rounded shrink-0 cursor-pointer"
+              />
+              <div className="text-xs">
+                <p className="font-semibold text-white">Smooth Motion (Constant Frame Rate / CFR)</p>
+                <p className="mt-0.5 text-slate-400">
+                  Menghilangkan frame rate tidak tetap (VFR) bawaan kamera iPhone agar video tidak patah-patah setelah diproses WhatsApp.
+                </p>
+              </div>
+            </label>
+
+            <label className="flex items-start gap-3 p-3.5 rounded-xl bg-[#101820] border border-white/10 cursor-pointer">
+              <input
+                type="checkbox"
+                disabled={isProcessing}
+                checked={settings.lanczosSharpen}
+                onChange={(e) =>
+                  onChangeSettings({...settings, lanczosSharpen: e.target.checked})
+                }
+                className="mt-0.5 w-5 h-5 accent-emerald-500 rounded shrink-0 cursor-pointer"
+              />
+              <div className="text-xs">
+                <p className="font-semibold text-white">Filter Lanczos + Pertajam Detail Halus</p>
+                <p className="mt-0.5 text-slate-400">
+                  Menjaga ketajaman tepi objek saat downscale 4K/1080p dan mencegah tampilan buram setelah kompresi Status.
+                </p>
+              </div>
+            </label>
           </div>
 
           {/* iPhone RAM advisory */}
           {capabilities.isIOS && (
             <p className="text-xs text-slate-400">
-              Catatan Safari iPhone: Pemrosesan berjalan 100% di RAM Safari. Untuk video berdurasi panjang atau file &gt;150 MB, disarankan memilih <strong>Full HD 1080p</strong> atau menggunakan <strong>Original Preserve Mode</strong>.
+              Catatan Safari iPhone: Pemrosesan berjalan 100% di RAM Safari. Menggunakan preset <strong>WA Status Anti-Pecah</strong> dengan <strong>30 fps CFR</strong> memberikan hasil paling mulus dan minim pecah saat diunggah ke Status WhatsApp.
             </p>
           )}
 
@@ -556,6 +632,33 @@ export const OptimizerView: React.FC<OptimizerViewProps> = ({
             </div>
           </div>
 
+          {/* WA Status Readiness Check */}
+          <div
+            className={`rounded-xl border px-4 py-3 text-xs flex items-start gap-2.5 ${
+              isResultInWaSafeZone
+                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200'
+                : 'bg-amber-500/10 border-amber-500/30 text-amber-200'
+            }`}
+          >
+            {isResultInWaSafeZone ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+            ) : (
+              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+            )}
+            <div className="space-y-1">
+              <p className="font-semibold">
+                {isResultInWaSafeZone
+                  ? `Zona Aman Status WhatsApp (${formatBytes(result.sizeBytes)} <= 15.5 MB)`
+                  : `Ukuran Output Besar (${formatBytes(result.sizeBytes)} > 15.5 MB)`}
+              </p>
+              <p className="opacity-90">
+                {isResultInWaSafeZone
+                  ? 'File sudah dioptimalkan dengan H.264 High, CFR, dan BT.709 di bawah ambang kompresi agresif Status WA. Saat masuk ke editor WhatsApp, ketuk ikon HD (jika tampil) sebelum mengirim.'
+                  : 'File di atas 15.5 MB tetap berisiko dikompres ulang secara berat oleh WhatsApp. Jika hasil Status masih pecah, pilih preset WA Status Anti-Pecah.'}
+              </p>
+            </div>
+          </div>
+
           {result.note && (
             <p className="text-xs text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-2.5">
               {result.note}
@@ -656,7 +759,7 @@ export const OptimizerView: React.FC<OptimizerViewProps> = ({
                     {metadata.container} / {metadata.codecHint ?? 'Auto'}
                   </td>
                   <td className="py-3 px-4 font-mono text-white">
-                    {result.container} / {result.codecUsed} + AAC
+                    {result.container} / {result.codecUsed} + AAC (BT.709)
                   </td>
                 </tr>
                 <tr>
@@ -672,9 +775,12 @@ export const OptimizerView: React.FC<OptimizerViewProps> = ({
             </table>
           </div>
 
-          <p className="text-xs text-slate-400">
-            Catatan jujur: WhatsApp tetap menerapkan pemrosesan server saat video diunggah ke Status. Video MP4 H.264/AAC dengan resolusi 1080p dan bitrate terjaga membantu meminimalkan penurunan ketajaman akibat kompresi ulang tersebut.
-          </p>
+          <div className="rounded-xl bg-[#101820] border border-white/10 p-4 text-xs text-slate-300 space-y-1.5">
+            <p className="font-semibold text-white">Tips Penting Saat Upload di iPhone WhatsApp:</p>
+            <p>1. Simpan video hasil ke Galeri Foto iPhone terlebih dahulu (atau bagikan langsung via Web Share), lalu unggah lewat tab <strong>Pembaruan (Status)</strong> langsung di aplikasi WhatsApp.</p>
+            <p>2. Di layar pratinjau Status WhatsApp, periksa apakah ada tombol <strong>HD</strong> di bagian atas — ketuk dan pilih <strong>Kualitas HD</strong> sebelum mengirim.</p>
+            <p>3. Di WhatsApp &rarr; Pengaturan &rarr; Penyimpanan dan data &rarr; Kualitas unggahan media, pilih <strong>Kualitas HD</strong>. (WhatsApp tetap menerapkan pemrosesan servernya sendiri, namun file &le; 14.5 MB CFR H.264 ini meminimalkan kompresi ulang yang membuat video pecah &amp; patah-patah.)</p>
+          </div>
 
           {/* Export Buttons */}
           <ExportActionBar

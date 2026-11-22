@@ -1,25 +1,27 @@
-# WA Status HD Pro — Dokumentasi Teknis & Instalasi PWA iPhone
+# WA Status HD Pro — Dokumentasi Teknis, Cloudflare Pages & Instalasi PWA iPhone
 
 ## 1. Ringkasan Arsitektur
 WA Status HD Pro adalah Progressive Web App (PWA) yang memproses video **100% secara lokal di perangkat pengguna** tanpa mengunggah file video ke server mana pun.
 
 - **Frontend**: React 19, TypeScript, Vite, Tailwind CSS v4.
-- **Local Video Engine**: `@ffmpeg/ffmpeg` WebAssembly (`/public/ffmpeg/ffmpeg-core.js` & `ffmpeg-core.wasm`) untuk optimasi H.264/AAC lokal, plus fallback otomatis ke **Original Preserve Mode** (tanpa re-encoding).
-- **PWA & Offline Shell**: `vite-plugin-pwa` menghasilkan `manifest.webmanifest` dan Service Worker Workbox (`sw.js`) yang meng-cache app shell dan file inti FFmpeg WASM (`CacheFirst`) untuk penggunaan offline.
+- **Local Video Engine**: `@ffmpeg/ffmpeg` WebAssembly (`ffmpeg-core.js` + `ffmpeg-core.wasm.part0` & `.part1`) untuk optimasi H.264/AAC lokal, plus fallback otomatis ke **Original Preserve Mode** (tanpa re-encoding).
+- **PWA & Offline Shell**: `vite-plugin-pwa` menghasilkan `manifest.webmanifest` dan Service Worker Workbox (`sw.js`) yang meng-cache app shell dan chunk FFmpeg WASM (`CacheFirst`) untuk penggunaan offline.
 - **Penyimpanan Lokal**: IndexedDB (`wa-status-hd-pro-db`) hanya menyimpan metadata riwayat proses apabila diizinkan oleh pengguna di halaman Pengaturan.
 
-## 2. Syarat Deployment Produksi (Wajib HTTPS)
-Agar PWA dapat diinstal di iPhone Safari (`Add to Home Screen`) dan Web Share API (`navigator.share({ files })`) berfungsi:
-1. Sajikan aplikasi melalui **HTTPS** yang valid.
-2. Jalankan build produksi:
-   ```bash
-   npm run build
-   ```
-3. Pastikan file berikut tersedia di folder hasil build (`dist/`):
-   - `manifest.webmanifest`
-   - `sw.js`
-   - `pwa-192x192.png`, `pwa-512x512.png`, `pwa-maskable-512x512.png`, `apple-touch-icon.png`, `icon.svg`
-   - `ffmpeg/ffmpeg-core.js` & `ffmpeg/ffmpeg-core.wasm`
+## 2. Deployment GitHub ke Cloudflare Pages (HTTPS)
+Proyek ini sudah dikonfigurasi agar lolos batasan **25 MiB per file** dan versi Node.js di Cloudflare Pages:
+
+1. **Kompatibilitas Batas 25 MiB Cloudflare Pages**:
+   - File `ffmpeg-core.wasm` (~32.2 MB) tidak disimpan di `public/`, melainkan dipecah otomatis saat `npm run build` menjadi dua file ~16.1 MB (`dist/ffmpeg/ffmpeg-core.wasm.part0` dan `part1`), lalu digabungkan kembali di memori browser saat runtime.
+2. **Versi Node.js**:
+   - File `.node-version` dan `.nvmrc` disetel ke `22` agar Cloudflare Pages memakai Node 22 (syarat Vite 8).
+3. **Pengaturan Build di Dashboard Cloudflare Pages**:
+   - **Framework preset**: `Vite` (atau `None`)
+   - **Build command**: `npm run build`
+   - **Build output directory**: `dist`
+   - **Environment variables (opsional)**: `NODE_VERSION = 22`
+4. **Header PWA**:
+   - File `public/_headers` otomatis mengatur `Content-Type: application/manifest+json` untuk `/manifest.webmanifest` dan `Cache-Control: no-cache` untuk `/sw.js`.
 
 ## 3. Cara Instal di iPhone Safari (iOS 17+)
 1. Buka URL HTTPS aplikasi menggunakan **Safari** di iPhone.

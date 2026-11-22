@@ -2,8 +2,11 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import fs from 'fs';
 import path from 'path';
-import {defineConfig} from 'vite';
+import {defineConfig, type ViteDevServer} from 'vite';
 import {VitePWA} from 'vite-plugin-pwa';
+
+const FFMPEG_ESM_DIR = path.resolve(__dirname, 'node_modules/@ffmpeg/core/dist/esm');
+const CHUNK_COUNT = 2; // Splits 32.2 MB wasm into two ~16.1 MB files (< 25 MiB Cloudflare Pages limit)
 
 export default defineConfig(() => {
   return {
@@ -13,12 +16,19 @@ export default defineConfig(() => {
       VitePWA({
         registerType: 'autoUpdate',
         manifestFilename: 'manifest.webmanifest',
-        includeAssets: ['icon.svg', 'apple-touch-icon.png', 'pwa-192x192.png', 'pwa-512x512.png', 'pwa-maskable-512x512.png'],
+        includeAssets: [
+          'icon.svg',
+          'apple-touch-icon.png',
+          'pwa-192x192.png',
+          'pwa-512x512.png',
+          'pwa-maskable-512x512.png',
+        ],
         manifest: {
           id: '/',
           name: 'WA Status HD Pro',
           short_name: 'WA HD Pro',
-          description: 'Pengolah dan pengoptimal video lokal berteknologi PWA untuk mempertahankan kualitas HD pada WhatsApp Status.',
+          description:
+            'Pengolah dan pengoptimal video lokal berteknologi PWA untuk mempertahankan kualitas HD pada WhatsApp Status.',
           theme_color: '#101820',
           background_color: '#101820',
           display: 'standalone',
@@ -49,16 +59,16 @@ export default defineConfig(() => {
         },
         workbox: {
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
-          globIgnores: ['**/ffmpeg/**'],
+          globIgnores: ['**/ffmpeg/**', '**/_headers'],
           navigateFallback: '/index.html',
           runtimeCaching: [
             {
-              urlPattern: /\/ffmpeg\/.*\.(js|wasm)$/i,
+              urlPattern: /\/ffmpeg\/.*\.(js|wasm|part\d+)$/i,
               handler: 'CacheFirst',
               options: {
                 cacheName: 'ffmpeg-wasm-cache',
                 expiration: {
-                  maxEntries: 4,
+                  maxEntries: 6,
                   maxAgeSeconds: 60 * 60 * 24 * 30,
                 },
                 cacheableResponse: {
@@ -101,6 +111,65 @@ export default defineConfig(() => {
           type: 'module',
         },
       }),
+      // Serves FFmpeg core in dev and splits ffmpeg-core.wasm into <25 MiB chunks in dist/ for Cloudflare Pages
+      {
+        name: 'ffmpeg-cloudflare-chunks',
+        configureServer(server: ViteDevServer): void {
+          server.middlewares.use('/ffmpeg', (req, res, next) => {
+            const urlPath = (req.url || '').split('?')[0];
+            const jsPath = path.join(FFMPEG_ESM_DIR, 'ffmpeg-core.js');
+            const wasmPath = path.join(FFMPEG_ESM_DIR, 'ffmpeg-core.wasm');
+
+            if (urlPath === '/ffmpeg-core.js' && fs.existsSync(jsPath)) {
+              res.setHeader('Content-Type', 'text/javascript; charset=utf-8');
+              fs.createReadStream(jsPath).pipe(res);
+              return;
+            }
+            if (urlPath === '/ffmpeg-core.wasm' && fs.existsSync(wasmPath)) {
+              res.setHeader('Content-Type', 'application/wasm');
+              fs.createReadStream(wasmPath).pipe(res);
+              return;
+            }
+            const partMatch = /^\/ffmpeg-core\.wasm\.part(\d+)$/.exec(urlPath);
+            if (partMatch && fs.existsSync(wasmPath)) {
+              const partIdx = Number(partMatch[1]);
+              if (partIdx >= 0 && partIdx < CHUNK_COUNT) {
+                const buf = fs.readFileSync(wasmPath);
+                const chunkSize = Math.ceil(buf.length / CHUNK_COUNT);
+                const start = partIdx * chunkSize;
+                const end = Math.min(buf.length, start + chunkSize);
+                res.setHeader('Content-Type', 'application/octet-stream');
+                res.end(buf.subarray(start, end));
+                return;
+              }
+            }
+            next();
+          });
+        },
+        closeBundle(error?: Error): void {
+          if (error) return;
+          const distDir = path.resolve(__dirname, 'dist');
+          const distFfmpegDir = path.join(distDir, 'ffmpeg');
+          const srcJs = path.join(FFMPEG_ESM_DIR, 'ffmpeg-core.js');
+          const srcWasm = path.join(FFMPEG_ESM_DIR, 'ffmpeg-core.wasm');
+          if (!fs.existsSync(distDir) || !fs.existsSync(srcJs) || !fs.existsSync(srcWasm)) {
+            return;
+          }
+          fs.mkdirSync(distFfmpegDir, {recursive: true});
+          fs.copyFileSync(srcJs, path.join(distFfmpegDir, 'ffmpeg-core.js'));
+
+          const wasmBuffer = fs.readFileSync(srcWasm);
+          const chunkSize = Math.ceil(wasmBuffer.length / CHUNK_COUNT);
+          for (let i = 0; i < CHUNK_COUNT; i++) {
+            const start = i * chunkSize;
+            const end = Math.min(wasmBuffer.length, start + chunkSize);
+            fs.writeFileSync(
+              path.join(distFfmpegDir, `ffmpeg-core.wasm.part${i}`),
+              wasmBuffer.subarray(start, end),
+            );
+          }
+        },
+      },
       // Copies src/assets into dist/ so root-relative URLs like
       // "/src/assets/images/..." (e.g. generate_image output) still resolve
       // in production builds. Do not remove.

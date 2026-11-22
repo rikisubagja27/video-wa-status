@@ -54,6 +54,37 @@ export function computeTargetDimensions(
   };
 }
 
+async function buildChunkedWasmBlobURL(): Promise<string> {
+  try {
+    const [res0, res1] = await Promise.all([
+      fetch('/ffmpeg/ffmpeg-core.wasm.part0'),
+      fetch('/ffmpeg/ffmpeg-core.wasm.part1'),
+    ]);
+    if (res0.ok && res1.ok) {
+      const [buf0, buf1] = await Promise.all([res0.arrayBuffer(), res1.arrayBuffer()]);
+      const combined = new Blob([buf0, buf1], {type: 'application/wasm'});
+      return URL.createObjectURL(combined);
+    }
+  } catch {
+    // Fall through to single-file / CDN fallback
+  }
+
+  try {
+    const singleRes = await fetch('/ffmpeg/ffmpeg-core.wasm');
+    if (singleRes.ok) {
+      const buf = await singleRes.arrayBuffer();
+      return URL.createObjectURL(new Blob([buf], {type: 'application/wasm'}));
+    }
+  } catch {
+    // Fall through to CDN fallback
+  }
+
+  return toBlobURL(
+    'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm/ffmpeg-core.wasm',
+    'application/wasm',
+  );
+}
+
 export async function getFFmpegInstance(
   onStatus?: (msg: string) => void,
 ): Promise<FFmpeg> {
@@ -69,12 +100,17 @@ export async function getFFmpegInstance(
     onStatus?.('Memuat engine FFmpeg WebAssembly lokal...');
 
     const coreURL = await toBlobURL('/ffmpeg/ffmpeg-core.js', 'text/javascript');
-    const wasmURL = await toBlobURL('/ffmpeg/ffmpeg-core.wasm', 'application/wasm');
+    const wasmURL = await buildChunkedWasmBlobURL();
 
-    await ffmpeg.load({
-      coreURL,
-      wasmURL,
-    });
+    try {
+      await ffmpeg.load({
+        coreURL,
+        wasmURL,
+      });
+    } finally {
+      URL.revokeObjectURL(coreURL);
+      URL.revokeObjectURL(wasmURL);
+    }
 
     ffmpegInstance = ffmpeg;
     return ffmpeg;

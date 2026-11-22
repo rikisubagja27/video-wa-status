@@ -1,0 +1,6 @@
+{
+  "name": "WA Status HD Pro",
+  "description": "Pengolah dan pengoptimal video lokal berteknologi PWA untuk mempertahankan kualitas HD pada WhatsApp Status.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

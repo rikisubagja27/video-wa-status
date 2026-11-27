@@ -121,16 +121,16 @@ export const GuideView: React.FC = () => {
         </div>
         <div className="space-y-3 text-sm text-slate-300 leading-relaxed">
           <p>
-            Berbeda dengan Chat biasa, fitur <strong>Status WhatsApp</strong> pada sebagian besar versi aplikasi tidak memiliki tombol HD dan selalu memproses ulang video di kisaran <strong>720p · 30fps · ~1–1.5 Mbps</strong>.
+            Tidak ada aplikasi, ekstensi, ataupun bot otomatis yang dapat memaksa server WhatsApp menonaktifkan kompresi Status sepenuhnya (bot tidak resmi juga melanggar aturan WhatsApp dan berisiko memblokir nomor Anda). Namun Anda dapat memaksimalkan ketajaman dengan dua jalur berikut:
           </p>
           <p>
-            Mengunggah video 1080p/4K berukuran besar (&gt; 10–15 MB) atau 60fps HDR iPhone memicu <em>resizer</em> dan kompresor darurat WhatsApp yang menurunkan resolusi secara kasar dan menjatuhkan bitrate terlalu rendah — inilah penyebab utama Status menjadi <strong>buram</strong>.
+            <strong>1. Trik Chat HD &rarr; Teruskan ke Status (1080p):</strong> Optimalkan video dengan preset <strong>Full HD 1080p</strong> lalu simpan ke Foto. Buka chat <strong>Pesan ke Diri Sendiri</strong> di WhatsApp, pilih video, aktifkan tombol <strong>HD</strong> di bagian atas, lalu kirim. Setelah terkirim, tahan video tersebut &rarr; pilih <strong>Teruskan (Forward) &rarr; Status Saya</strong>.
           </p>
           <p>
-            Memilih preset <strong>WA Status Anti-Buram (720p · 30fps CFR · 1.2–2.2 Mbps)</strong> menyamakan ukuran frame dan warna SDR (BT.709) sebelum diunggah, sehingga detail teks dan wajah tetap jauh lebih bersih.
+            <strong>2. Upload Langsung ke Tab Status (720p 1.2–2.2 Mbps):</strong> Untuk upload langsung ke tab Status tanpa lewat chat, gunakan preset <strong>WA Status Anti-Buram (720p 30fps CFR)</strong> agar ukuran dan resolusi sudah sesuai batas internal WhatsApp sehingga tidak diturunkan secara kasar.
           </p>
           <p className="text-xs text-slate-400">
-            Tips iPhone: Simpan MP4 ke Foto lalu unggah langsung dari aplikasi WhatsApp menggunakan <strong>Wi-Fi yang stabil</strong> dengan <strong>Mode Daya Rendah (Low Power Mode) dimatikan</strong>.
+            Tips wajib iPhone: unggah lewat aplikasi WhatsApp utama (bukan Share Sheet Safari) pada koneksi <strong>Wi-Fi yang stabil</strong> dengan <strong>Mode Daya Rendah (Low Power Mode) dimatikan</strong>.
           </p>
         </div>
       </section>

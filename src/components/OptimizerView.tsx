@@ -778,11 +778,14 @@ export const OptimizerView: React.FC<OptimizerViewProps> = ({
             </table>
           </div>
 
-          <div className="rounded-xl bg-[#101820] border border-white/10 p-4 text-xs text-slate-300 space-y-1.5">
-            <p className="font-semibold text-white">Agar Status Tidak Buram Saat Diupload di iPhone:</p>
-            <p>1. <strong>Simpan ke Foto terlebih dahulu:</strong> Berbagi langsung lewat Share Sheet Safari sering memakai kompresi ekstensi iOS. Simpan MP4 ke <strong>Foto (Photos)</strong> lalu buka WhatsApp &rarr; <strong>Pembaruan / Status</strong> &rarr; pilih dari Galeri.</p>
-            <p>2. <strong>Upload lewat Wi-Fi Stabil &amp; Matikan Mode Daya Rendah:</strong> WhatsApp otomatis menurunkan kualitas upload secara drastis apabila mendeteksi sinyal seluler lambat atau Low Power Mode iPhone aktif.</p>
-            <p>3. <strong>Fakta Kompresi Status WA:</strong> Berbeda dengan Chat biasa, fitur Status WhatsApp di sebagian besar versi belum menyediakan tombol HD dan selalu memproses ulang di server sekitar 720p / ~1–1.5 Mbps. Memilih preset <strong>720p · 1.2–2.2 Mbps</strong> mencegah penurunan resolusi ganda yang bikin buram.</p>
+          <div className="rounded-xl bg-[#101820] border border-white/10 p-4 text-xs text-slate-300 space-y-2">
+            <p className="font-semibold text-white">2 Cara Upload Terbaik di iPhone (Tanpa Bot Berisiko Banned):</p>
+            <p>
+              <strong>Cara A — Trik Chat HD ke Status (Untuk Video 1080p):</strong> Simpan MP4 hasil (pilih preset <strong>Full HD 1080p · 6 Mbps</strong>) ke aplikasi <strong>Foto</strong> &rarr; buka WhatsApp dan kirim ke chat <strong>Pesan ke Diri Sendiri (Message Yourself)</strong> &rarr; ketuk ikon <strong>HD</strong> di bagian atas sebelum mengirim &rarr; setelah terkirim, tahan video tersebut lalu pilih <strong>Teruskan (Forward) &rarr; Status Saya</strong>.
+            </p>
+            <p>
+              <strong>Cara B — Upload Langsung ke Status (Gunakan 720p):</strong> Karena tab Status langsung belum memiliki tombol HD penuh, unggah file preset <strong>WA Status Anti-Buram (720p · 1.2–2.2 Mbps)</strong> dari <strong>Foto</strong> menggunakan <strong>Wi-Fi stabil</strong> dengan <strong>Mode Daya Rendah (Low Power Mode) mati</strong>.
+            </p>
           </div>
 
           {/* Export Buttons */}

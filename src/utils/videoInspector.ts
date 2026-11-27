@@ -304,7 +304,7 @@ export function getDeviceCapabilities(): DeviceCapabilities {
 
 export function buildRecommendation(
   meta: VideoMetadata,
-  caps: DeviceCapabilities,
+  _caps: DeviceCapabilities,
   appSettings: AppSettings,
 ): OptimizationRecommendation {
   const shortSide = Math.min(meta.width, meta.height);
@@ -320,15 +320,37 @@ export function buildRecommendation(
       ? `Durasi video ${formatDuration(meta.durationSec)} melebihi batas 30 detik per klip WhatsApp Status. WhatsApp akan memotong video secara otomatis saat diunggah.`
       : null;
 
-  // Only preserve directly when already MP4 H.264 within WhatsApp Status native 720p envelope
+  const isBlurryOrLowRes =
+    (shortSide > 0 && shortSide < 720) ||
+    (bitrateMbps > 0 && bitrateMbps < 1.35);
+
+  if (isBlurryOrLowRes) {
+    return {
+      recommendedMode: 'optimize',
+      recommendedPreset: 'restore-hd',
+      recommendedCodec: 'h264',
+      recommendedBitrate: 'wa-3200k',
+      recommendedFps: '30',
+      recommendedEnhance: 'strong',
+      headline: 'Rekomendasi: Pulihkan Video Buram → Full HD 1080p (Restorasi GPU Kuat)',
+      reasons: [
+        `Sumber video terdeteksi beresolusi/bitrate rendah (${meta.width}×${meta.height}, ${bitrateMbps > 0 ? `${bitrateMbps.toFixed(1)} Mbps` : 'terkompresi'}).`,
+        'Mode Restorasi GPU menghaluskan kotak kompresi (deblock), menajamkan tepi wajah & teks (CAS), lalu meningkatkan skala bersih ke 1080p @ 3.2 Mbps.',
+        'Disarankan kirim lewat Trik Chat HD → Forward ke Status agar ketajaman 1080p tetap terjaga.',
+      ],
+      statusDurationWarning,
+    };
+  }
+
+  // Only preserve directly when already crisp MP4 H.264 within WhatsApp Status sweet spot
   if (
     isMP4 &&
     isH264 &&
-    shortSide <= 720 &&
-    longSide <= 1280 &&
-    bitrateMbps > 0 &&
-    bitrateMbps <= 2.4 &&
-    mbSize <= 8.5
+    shortSide >= 720 &&
+    longSide <= 1920 &&
+    bitrateMbps >= 2.0 &&
+    bitrateMbps <= 4.2 &&
+    mbSize <= 12.5
   ) {
     return {
       recommendedMode: 'preserve',
@@ -336,9 +358,10 @@ export function buildRecommendation(
       recommendedCodec: 'h264',
       recommendedBitrate: appSettings.defaultBitrate,
       recommendedFps: 'original',
-      headline: 'Gunakan Original Preserve Mode (Sudah di Titik Optimal Status WA)',
+      recommendedEnhance: 'off',
+      headline: 'Gunakan Original Preserve Mode (Sudah di Titik Tajam Optimal WA)',
       reasons: [
-        'Video sudah berformat MP4 H.264 720p dengan bitrate dan ukuran yang sesuai batas Status WhatsApp.',
+        'Video sudah berformat MP4 H.264 dengan resolusi HD (720p/1080p), bitrate bersih, dan ukuran aman di bawah ~12.5 MB.',
         'Tidak perlu encoding ulang agar ketajaman teks, detail wajah, dan audio asli tidak rusak.',
       ],
       statusDurationWarning,
@@ -346,28 +369,28 @@ export function buildRecommendation(
   }
 
   const reasons: string[] = [];
-  if (shortSide > 720) {
+  if (shortSide > 1080) {
     reasons.push(
-      `WhatsApp Status tidak memiliki mode HD penuh dan hampir selalu menurunkan video ${meta.width}×${meta.height} ke 720p dengan kompresi kasar. Pre-scale bersih ke 720p terlebih dahulu mencegah hasil buram.`,
+      `Video ${meta.width}×${meta.height} terlalu besar untuk WhatsApp Status dan memicu kompresi kasar. Pre-scale presisi + penajaman GPU menjaga tepi objek tetap tajam.`,
     );
   }
-  if (bitrateMbps > 2.4 || mbSize > 8.5) {
+  if (bitrateMbps > 4.2 || mbSize > 12.5) {
     reasons.push(
-      `Ukuran (${mbSize.toFixed(1)} MB) atau bitrate (${bitrateMbps.toFixed(1)} Mbps) akan dipangkas paksa oleh WhatsApp. Mengunci bitrate di 1.2–2.2 Mbps (30 fps CFR) menghasilkan video jauh lebih bersih setelah diunggah.`,
+      `Ukuran (${mbSize.toFixed(1)} MB) atau bitrate (${bitrateMbps.toFixed(1)} Mbps) akan dipangkas berat oleh WhatsApp. Mengunci di ~3.2 Mbps (H.264 30fps CFR + CAS Sharpen) menjaga piksel tetap padat & bersih.`,
     );
   }
   if (isHEVC || meta.container.includes('MOV')) {
     reasons.push(
-      'Video iPhone MOV/HEVC memakai Variable Frame Rate (VFR) & warna HDR yang sering menjadi buram dan patah-patah saat diproses WhatsApp. Konversi ke H.264 SDR 30fps CFR menjaga kestabilan.',
+      'Video iPhone MOV/HEVC memakai Variable Frame Rate (VFR) & HDR yang sering menjadi buram saat diproses WhatsApp. Konversi ke H.264 SDR BT.709 30fps CFR menjaga kestabilan.',
     );
   }
   if (reasons.length === 0) {
     reasons.push(
-      'Profil 720p 30fps CFR (H.264 High) menyamakan format sumber dengan batas internal Status WhatsApp agar tidak terkena kompresi ulang berat.',
+      'Profil HD Optimal + Penajaman GPU CAS menyamakan format dengan batas aman WhatsApp agar kompresi ganda tidak membuat video buram.',
     );
   }
 
-  const recommendedBitrate = meta.durationSec > 18 ? 'wa-1200k' : 'wa-2200k';
+  const recommendedBitrate = meta.durationSec > 18 ? 'wa-auto' : 'wa-3200k';
 
   return {
     recommendedMode: 'optimize',
@@ -375,10 +398,11 @@ export function buildRecommendation(
     recommendedCodec: 'h264',
     recommendedBitrate,
     recommendedFps: '30',
+    recommendedEnhance: 'balanced',
     headline:
       meta.durationSec > 18
-        ? 'Rekomendasi: WA Status Anti-Buram (720p · 30fps CFR · 1.2 Mbps)'
-        : 'Rekomendasi: WA Status Anti-Buram (720p · 30fps CFR · 2.2 Mbps)',
+        ? 'Rekomendasi: WA Status HD Optimal (720p · 30fps CFR · Penajaman GPU)'
+        : 'Rekomendasi: WA Status HD Tajam (1080p · 3.2 Mbps · Penajaman GPU)',
     reasons,
     statusDurationWarning,
   };

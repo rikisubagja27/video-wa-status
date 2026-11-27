@@ -11,11 +11,13 @@ import {
   canEncodeVideo,
 } from 'mediabunny';
 import type {
+  EnhanceLevel,
   OptimizationResult,
   OptimizationSettings,
   VideoMetadata,
 } from '../types/video';
-import {computeTargetDimensions} from './videoMath';
+import {createGpuFrameEnhancer, type GpuFrameEnhancer} from './gpuFrameEnhancer';
+import {computeTargetDimensions, computeWhatsAppSweetSpotKbps} from './videoMath';
 
 let activeConversion: Conversion | null = null;
 
@@ -49,24 +51,16 @@ function resolveTargetVideoBitrateBps(
 ): number {
   if (settings.bitrate === 'wa-1200k') return 1_200_000;
   if (settings.bitrate === 'wa-2200k') return 2_200_000;
+  if (settings.bitrate === 'wa-3200k') return 3_200_000;
   if (settings.bitrate === '6m') return 6_000_000;
   if (settings.bitrate === '8m') return 8_000_000;
   if (settings.bitrate === '12m') return 12_000_000;
   if (settings.bitrate === 'auto-hd') {
-    return targetShortSide >= 1080 ? (fps >= 50 ? 9_000_000 : 7_500_000) : 4_200_000;
+    return targetShortSide >= 1080 ? (fps >= 50 ? 9_000_000 : 7_500_000) : 4_800_000;
   }
 
-  // wa-auto: matches 720p Status sweet spot (1.2-2.2 Mbps) or 1080p HD chat path
-  const effectiveDuration = Math.min(Math.max(durationSec || 15, 3), 30);
-  const audioBps = settings.audio === 'aac-128' ? 128_000 : 192_000;
-
-  if (targetShortSide <= 720) {
-    const budgetTotalBps = Math.floor((6.5 * 1024 * 1024 * 8) / effectiveDuration);
-    return Math.max(1_200_000, Math.min(2_200_000, budgetTotalBps - audioBps));
-  }
-
-  const budgetTotalBps = Math.floor((14.5 * 1024 * 1024 * 8) / effectiveDuration);
-  return Math.max(3_500_000, Math.min(5_800_000, budgetTotalBps - audioBps));
+  const audioKbps = settings.audio === 'aac-128' ? 128 : 192;
+  return computeWhatsAppSweetSpotKbps(durationSec, audioKbps, targetShortSide) * 1000;
 }
 
 export async function processVideoWithWebCodecs(
@@ -83,13 +77,14 @@ export async function processVideoWithWebCodecs(
   }
 
   const startedAt = performance.now();
-  callbacks.onStatus('Mengaktifkan akselerasi GPU perangkat (WebCodecs)...');
+  callbacks.onStatus('Mengaktifkan akselerasi GPU & restorasi frame (WebCodecs + WebGL2)...');
   callbacks.onProgress(2);
 
   const targetDims = computeTargetDimensions(
     sourceMeta.width,
     sourceMeta.height,
     settings.quality,
+    sourceMeta.durationSec,
   );
 
   // Determine target FPS (never upsample)
@@ -112,6 +107,13 @@ export async function processVideoWithWebCodecs(
     targetShortSide,
     effectiveFps,
   );
+
+  const effectiveEnhance: EnhanceLevel =
+    settings.enhanceLevel !== 'off'
+      ? settings.enhanceLevel
+      : settings.lanczosSharpen
+        ? 'balanced'
+        : 'off';
 
   let targetCodec: 'avc' | 'hevc' = settings.codec === 'h265' ? 'hevc' : 'avc';
   let note: string | undefined;
@@ -142,10 +144,21 @@ export async function processVideoWithWebCodecs(
     source: new BlobSource(sourceFile),
   });
 
+  let enhancer: GpuFrameEnhancer | null = null;
+
   try {
     const videoTrack = await input.getPrimaryVideoTrack();
     if (!videoTrack || !(await videoTrack.canDecode())) {
       throw new Error('WEBCODECS_UNSUPPORTED');
+    }
+
+    const shouldUseGpuShader = effectiveEnhance !== 'off' || targetDims.upscaled;
+    if (shouldUseGpuShader) {
+      enhancer = createGpuFrameEnhancer(
+        targetDims.width,
+        targetDims.height,
+        effectiveEnhance,
+      );
     }
 
     const output = new Output({
@@ -167,9 +180,15 @@ export async function processVideoWithWebCodecs(
       video: {
         codec: targetCodec,
         quality: videoQuality,
-        ...(targetDims.downscaled
-          ? {width: targetDims.width, height: targetDims.height, fit: 'contain'}
-          : {}),
+        ...(enhancer
+          ? {
+              process: (sample) => enhancer!.processSample(sample),
+              processedWidth: targetDims.width,
+              processedHeight: targetDims.height,
+            }
+          : targetDims.resized
+            ? {width: targetDims.width, height: targetDims.height, fit: 'contain'}
+            : {}),
         ...(targetFps ? {frameRate: targetFps} : {}),
         keyFrameInterval: 2,
         hardwareAcceleration: 'prefer-hardware',
@@ -199,7 +218,13 @@ export async function processVideoWithWebCodecs(
       callbacks.onProgress(pct);
     };
 
-    callbacks.onStatus('Memproses video cepat dengan akselerasi hardware GPU...');
+    callbacks.onStatus(
+      enhancer
+        ? effectiveEnhance === 'strong'
+          ? 'Merestorasi detail video buram & menajamkan tepi di GPU...'
+          : 'Memproses & menajamkan detail HD via GPU...'
+        : 'Memproses video cepat dengan akselerasi hardware GPU...',
+    );
     await conversion.execute();
     activeConversion = null;
 
@@ -220,6 +245,12 @@ export async function processVideoWithWebCodecs(
 
     callbacks.onProgress(100);
 
+    const gpuTag = enhancer
+      ? effectiveEnhance === 'strong'
+        ? ' + Restorasi GPU'
+        : ' + CAS Sharpen'
+      : '';
+
     return {
       mode: 'optimize',
       file: outFile,
@@ -231,8 +262,8 @@ export async function processVideoWithWebCodecs(
       estimatedBitrateBps,
       codecUsed:
         targetCodec === 'hevc'
-          ? 'H.265 (Hardware GPU)'
-          : 'H.264 (Hardware GPU)',
+          ? `H.265 (Hardware GPU${gpuTag})`
+          : `H.264 (Hardware GPU${gpuTag})`,
       container: 'MP4',
       processingTimeMs: Math.round(performance.now() - startedAt),
       note,
@@ -244,6 +275,7 @@ export async function processVideoWithWebCodecs(
     }
     throw err;
   } finally {
+    enhancer?.dispose();
     input.dispose();
   }
 }

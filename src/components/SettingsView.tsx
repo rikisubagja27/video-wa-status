@@ -152,8 +152,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               }
               className="w-full min-h-[44px] rounded-xl bg-[#101820] border border-white/15 px-3 text-sm text-white focus:outline-none focus:border-emerald-500"
             >
-              <option value="wa-1200k">1.2 Mbps (Anti-Buram Status WA · &le; 4.5 MB)</option>
-              <option value="wa-2200k">2.2 Mbps (720p Tajam · Klip &le; 20 Detik)</option>
+              <option value="wa-3200k">3.2 Mbps (Rekomendasi Tajam Status WA &amp; Chat HD)</option>
+              <option value="wa-2200k">2.2 Mbps (720p Stabil · Klip Panjang)</option>
+              <option value="wa-1200k">1.2 Mbps (Mode Hemat Ukuran Kecil)</option>
               <option value="wa-auto">Otomatis Sweet Spot</option>
               <option value="auto-hd">Otomatis HD (Untuk Chat HD / Arsip)</option>
               <option value="6m">6 Mbps</option>

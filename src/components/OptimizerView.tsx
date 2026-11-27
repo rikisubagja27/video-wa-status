@@ -15,6 +15,7 @@ import type {
   AudioMode,
   BitrateMode,
   DeviceCapabilities,
+  EnhanceLevel,
   FpsOption,
   OptimizationRecommendation,
   OptimizationResult,
@@ -112,6 +113,7 @@ export const OptimizerView: React.FC<OptimizerViewProps> = ({
     metadata.width,
     metadata.height,
     settings.quality,
+    metadata.durationSec,
   );
   const targetAudioKbps = settings.audio === 'aac-128' ? 128 : 192;
   const sweetSpotKbps = computeWhatsAppSweetSpotKbps(
@@ -130,7 +132,8 @@ export const OptimizerView: React.FC<OptimizerViewProps> = ({
       bitrate: recommendation.recommendedBitrate,
       fps: recommendation.recommendedFps,
       enforceCfr: true,
-      lanczosSharpen: true,
+      lanczosSharpen: recommendation.recommendedEnhance !== 'off',
+      enhanceLevel: recommendation.recommendedEnhance,
     });
   };
 
@@ -203,8 +206,16 @@ export const OptimizerView: React.FC<OptimizerViewProps> = ({
   }> = [
     {
       id: 'wa-sweetspot',
-      label: 'WA Status Anti-Buram (720p)',
-      detail: '720p 30fps CFR + 1.2–2.2 Mbps (menghindari resizer buram WhatsApp Status)',
+      label: 'WA Status HD Optimal',
+      detail: '1080p/720p 30fps CFR + CAS Sharpen GPU (tajam & aman di bawah batas ukuran WA)',
+    },
+    {
+      id: 'restore-hd',
+      label: 'Pulihkan Video Buram → 1080p',
+      detail:
+        shortSide < 1080
+          ? 'Hapus kotak kompresi (deblock), pertajam detail, & upscale bersih ke 1080p HD'
+          : 'Restorasi GPU kuat (deblock + CAS sharpen) pada resolusi 1080p HD',
     },
     {
       id: 'original',
@@ -222,7 +233,7 @@ export const OptimizerView: React.FC<OptimizerViewProps> = ({
     {
       id: '720p',
       label: 'HD 720p',
-      detail: 'Paling ringan & minim artefak blok pada aksi cepat',
+      detail: 'Paling ringan & aman untuk klip panjang > 20 detik',
     },
     {
       id: '4k',
@@ -242,7 +253,7 @@ export const OptimizerView: React.FC<OptimizerViewProps> = ({
       : 0;
 
   const resultSizeMb = result ? result.sizeBytes / (1024 * 1024) : 0;
-  const isResultInWaSafeZone = resultSizeMb > 0 && resultSizeMb <= 8.5;
+  const isResultInWaSafeZone = resultSizeMb > 0 && resultSizeMb <= 12.5;
 
   return (
     <div className="space-y-6">
@@ -314,7 +325,7 @@ export const OptimizerView: React.FC<OptimizerViewProps> = ({
               )}
             </div>
             <p className="mt-1.5 text-xs text-slate-300 leading-relaxed">
-              Menyamakan resolusi &amp; bitrate dengan batas Status WA (720p 30fps CFR · H.264 SDR) agar server WA tidak mengompres ulang secara buram.
+              Pulihkan video buram dengan shader GPU (deblock + CAS sharpen) &amp; kunci format H.264 SDR 30fps CFR agar tajam di WhatsApp.
             </p>
           </button>
         </div>
@@ -375,13 +386,34 @@ export const OptimizerView: React.FC<OptimizerViewProps> = ({
                     key={opt.id}
                     type="button"
                     disabled={opt.disabled || isProcessing}
-                    onClick={() =>
-                      onChangeSettings({
-                        ...settings,
-                        quality: opt.id,
-                        bitrate: opt.id === 'wa-sweetspot' ? 'wa-auto' : settings.bitrate,
-                      })
-                    }
+                    onClick={() => {
+                      if (opt.id === 'restore-hd') {
+                        onChangeSettings({
+                          ...settings,
+                          quality: 'restore-hd',
+                          enhanceLevel: 'strong',
+                          lanczosSharpen: true,
+                          bitrate:
+                            settings.bitrate === 'wa-1200k' || settings.bitrate === 'wa-2200k'
+                              ? 'wa-3200k'
+                              : settings.bitrate,
+                        });
+                      } else if (opt.id === 'wa-sweetspot') {
+                        onChangeSettings({
+                          ...settings,
+                          quality: 'wa-sweetspot',
+                          bitrate: 'wa-auto',
+                          enhanceLevel:
+                            settings.enhanceLevel === 'off' ? 'balanced' : settings.enhanceLevel,
+                          lanczosSharpen: true,
+                        });
+                      } else {
+                        onChangeSettings({
+                          ...settings,
+                          quality: opt.id,
+                        });
+                      }
+                    }}
                     className={`min-h-[68px] text-left p-3.5 rounded-xl border transition ${
                       opt.disabled
                         ? 'opacity-45 cursor-not-allowed border-white/5 bg-[#0D1319]'
@@ -450,8 +482,9 @@ export const OptimizerView: React.FC<OptimizerViewProps> = ({
                 }
                 className="w-full min-h-[44px] rounded-xl bg-[#101820] border border-white/15 px-3 text-sm text-white focus:outline-none focus:border-emerald-500"
               >
-                <option value="wa-1200k">1.2 Mbps (Anti-Buram Status WA · &le; 4.5 MB)</option>
-                <option value="wa-2200k">2.2 Mbps (720p Tajam · Klip &le; 20 Detik)</option>
+                <option value="wa-3200k">3.2 Mbps (Tajam Status WA &amp; Chat HD)</option>
+                <option value="wa-2200k">2.2 Mbps (720p Stabil · Klip Panjang)</option>
+                <option value="wa-1200k">1.2 Mbps (Hemat Ukuran Kecil)</option>
                 <option value="wa-auto">
                   Otomatis Sweet Spot (~{(sweetSpotKbps / 1000).toFixed(1)} Mbps)
                 </option>
@@ -507,23 +540,41 @@ export const OptimizerView: React.FC<OptimizerViewProps> = ({
               </div>
             </label>
 
-            <label className="flex items-start gap-3 p-3.5 rounded-xl bg-[#101820] border border-white/10 cursor-pointer">
-              <input
-                type="checkbox"
-                disabled={isProcessing}
-                checked={settings.lanczosSharpen}
-                onChange={(e) =>
-                  onChangeSettings({...settings, lanczosSharpen: e.target.checked})
-                }
-                className="mt-0.5 w-5 h-5 accent-emerald-500 rounded shrink-0 cursor-pointer"
-              />
-              <div className="text-xs">
-                <p className="font-semibold text-white">Filter Lanczos + Pertajam Detail Halus</p>
-                <p className="mt-0.5 text-slate-400">
-                  Menjaga ketajaman tepi objek saat downscale 4K/1080p dan mencegah tampilan buram setelah kompresi Status.
-                </p>
+            <div className="p-3.5 rounded-xl bg-[#101820] border border-white/10 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <label htmlFor="enhance-level-select" className="text-xs font-semibold text-white">
+                  Restorasi &amp; Penajaman GPU (WebGL2 CAS)
+                </label>
+                <span className="font-mono text-[11px] text-emerald-400">
+                  {settings.enhanceLevel === 'strong'
+                    ? 'Kuat'
+                    : settings.enhanceLevel === 'balanced'
+                      ? 'Seimbang'
+                      : 'Mati'}
+                </span>
               </div>
-            </label>
+              <select
+                id="enhance-level-select"
+                disabled={isProcessing}
+                value={settings.enhanceLevel}
+                onChange={(e) => {
+                  const next = e.target.value as EnhanceLevel;
+                  onChangeSettings({
+                    ...settings,
+                    enhanceLevel: next,
+                    lanczosSharpen: next !== 'off',
+                  });
+                }}
+                className="w-full min-h-[40px] rounded-lg bg-[#131B22] border border-white/15 px-3 text-xs text-white focus:outline-none focus:border-emerald-500"
+              >
+                <option value="strong">Restorasi Kuat (Untuk Video Buram/Pecah — Deblock + CAS)</option>
+                <option value="balanced">Seimbang (Pertajam Detail &amp; Kontras HD)</option>
+                <option value="off">Mati (Tanpa Filter GPU)</option>
+              </select>
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                Menghaluskan kotak kompresi (deblock) dan menajamkan tepi wajah/teks langsung di GPU sebelum dikirim ke WhatsApp.
+              </p>
+            </div>
           </div>
 
           {/* iPhone RAM advisory */}
@@ -651,13 +702,13 @@ export const OptimizerView: React.FC<OptimizerViewProps> = ({
             <div className="space-y-1">
               <p className="font-semibold">
                 {isResultInWaSafeZone
-                  ? `Zona Optimal Status WA (${formatBytes(result.sizeBytes)} <= 8.5 MB)`
-                  : `Ukuran Output ${formatBytes(result.sizeBytes)} (> 8.5 MB)`}
+                  ? `Zona Tajam WhatsApp (${formatBytes(result.sizeBytes)} <= 12.5 MB)`
+                  : `Ukuran Output ${formatBytes(result.sizeBytes)} (> 12.5 MB)`}
               </p>
               <p className="opacity-90">
                 {isResultInWaSafeZone
-                  ? 'Ukuran & profil 720p H.264 sudah sesuai ambang Status WhatsApp sehingga tidak perlu diturunkan paksa oleh resizer kasar WhatsApp.'
-                  : 'File di atas 8.5 MB untuk Status WA berisiko dikompres ulang cukup berat saat upload. Jika Status masih terlihat buram, coba gunakan preset WA Status Anti-Buram (720p) + bitrate 1.2 Mbps.'}
+                  ? 'Bitrate & ukuran sudah padat namun aman dari pemangkasan ekstrem WhatsApp. Gunakan Cara A (Trik Chat HD → Forward) atau Cara B (Upload dari Foto via Wi-Fi).'
+                  : 'File di atas 12.5 MB berisiko dipangkas cukup berat di tab Status langsung. Gunakan Cara A (Trik Chat HD → Forward ke Status) atau turunkan bitrate ke 2.2 Mbps.'}
               </p>
             </div>
           </div>
@@ -779,12 +830,12 @@ export const OptimizerView: React.FC<OptimizerViewProps> = ({
           </div>
 
           <div className="rounded-xl bg-[#101820] border border-white/10 p-4 text-xs text-slate-300 space-y-2">
-            <p className="font-semibold text-white">2 Cara Upload Terbaik di iPhone (Tanpa Bot Berisiko Banned):</p>
+            <p className="font-semibold text-white">2 Cara Upload Terbaik di iPhone Agar Tidak Pecah:</p>
             <p>
-              <strong>Cara A — Trik Chat HD ke Status (Untuk Video 1080p):</strong> Simpan MP4 hasil (pilih preset <strong>Full HD 1080p · 6 Mbps</strong>) ke aplikasi <strong>Foto</strong> &rarr; buka WhatsApp dan kirim ke chat <strong>Pesan ke Diri Sendiri (Message Yourself)</strong> &rarr; ketuk ikon <strong>HD</strong> di bagian atas sebelum mengirim &rarr; setelah terkirim, tahan video tersebut lalu pilih <strong>Teruskan (Forward) &rarr; Status Saya</strong>.
+              <strong>Cara A — Trik Chat HD ke Status (Paling Tajam 1080p):</strong> Simpan MP4 hasil (preset <strong>Pulihkan Video Buram &rarr; 1080p</strong> atau <strong>WA Status HD Optimal</strong>) ke aplikasi <strong>Foto</strong> &rarr; buka WhatsApp dan kirim ke chat <strong>Pesan ke Diri Sendiri (Message Yourself)</strong> &rarr; ketuk ikon <strong>HD</strong> di bagian atas sebelum mengirim &rarr; setelah terkirim, tahan video tersebut lalu pilih <strong>Teruskan (Forward) &rarr; Status Saya</strong>.
             </p>
             <p>
-              <strong>Cara B — Upload Langsung ke Status (Gunakan 720p):</strong> Karena tab Status langsung belum memiliki tombol HD penuh, unggah file preset <strong>WA Status Anti-Buram (720p · 1.2–2.2 Mbps)</strong> dari <strong>Foto</strong> menggunakan <strong>Wi-Fi stabil</strong> dengan <strong>Mode Daya Rendah (Low Power Mode) mati</strong>.
+              <strong>Cara B — Upload Langsung ke Tab Status:</strong> Simpan MP4 hasil ke <strong>Foto</strong> lalu pilih dari dalam aplikasi WhatsApp (bukan menu Share Safari) menggunakan <strong>Wi-Fi stabil</strong> dengan <strong>Mode Daya Rendah (Low Power Mode) mati</strong>.
             </p>
           </div>
 

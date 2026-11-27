@@ -78,6 +78,7 @@ export default function App() {
     fps: '30',
     enforceCfr: true,
     lanczosSharpen: true,
+    enhanceLevel: 'balanced',
   }));
   const [optimizationResult, setOptimizationResult] = useState<OptimizationResult | null>(null);
 
@@ -143,7 +144,8 @@ export default function App() {
           bitrate: rec.recommendedBitrate,
           fps: rec.recommendedFps,
           enforceCfr: true,
-          lanczosSharpen: true,
+          lanczosSharpen: rec.recommendedEnhance !== 'off',
+          enhanceLevel: rec.recommendedEnhance,
         });
       } catch (err) {
         URL.revokeObjectURL(nextUrl);

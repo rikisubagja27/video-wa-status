@@ -1,6 +1,7 @@
 import {FFmpeg} from '@ffmpeg/ffmpeg';
 import {toBlobURL} from '@ffmpeg/util';
 import type {
+  EnhanceLevel,
   OptimizationResult,
   OptimizationSettings,
   VideoMetadata,
@@ -141,6 +142,7 @@ export async function processVideoWithFFmpeg(
       sourceMeta.width,
       sourceMeta.height,
       settings.quality,
+      sourceMeta.durationSec,
     );
 
     let effectiveFps = 30;
@@ -154,14 +156,39 @@ export async function processVideoWithFFmpeg(
 
     const audioKbps = settings.audio === 'aac-128' ? 128 : 192;
     const targetShortSide = Math.min(targetDims.width, targetDims.height);
+    const effectiveEnhance: EnhanceLevel =
+      settings.enhanceLevel !== 'off'
+        ? settings.enhanceLevel
+        : settings.lanczosSharpen
+          ? 'balanced'
+          : 'off';
 
     const buildArgs = (codec: 'h264' | 'h265'): string[] => {
       const args: string[] = ['-i', inputFileName];
+      const filters: string[] = [];
 
-      // Fast clean scaling without CPU-heavy unsharp noise that causes macroblocking
-      if (targetDims.downscaled) {
-        const scaleFlags = settings.lanczosSharpen ? 'lanczos' : 'bicubic';
-        args.push('-vf', `scale=${targetDims.width}:${targetDims.height}:flags=${scaleFlags}`);
+      // For blurry/blocky inputs, denoise compression squares before sharpening & scaling
+      if (effectiveEnhance === 'strong') {
+        filters.push('hqdn3d=1.6:1.2:4:3');
+      }
+
+      if (targetDims.resized) {
+        const scaleFlags =
+          effectiveEnhance !== 'off' || settings.lanczosSharpen ? 'lanczos' : 'bicubic';
+        filters.push(`scale=${targetDims.width}:${targetDims.height}:flags=${scaleFlags}`);
+      }
+
+      // Luma-only sharpening prevents chroma ringing while visibly sharpening blurry faces & text
+      if (effectiveEnhance === 'strong') {
+        filters.push('unsharp=5:5:0.85:3:3:0.0');
+        filters.push('eq=contrast=1.06:saturation=1.05');
+      } else if (effectiveEnhance === 'balanced') {
+        filters.push('unsharp=5:5:0.45:3:3:0.0');
+        filters.push('eq=contrast=1.03:saturation=1.03');
+      }
+
+      if (filters.length > 0) {
+        args.push('-vf', filters.join(','));
       }
 
       if (settings.enforceCfr) {
@@ -196,7 +223,6 @@ export async function processVideoWithFFmpeg(
         );
       }
 
-      // superfast is 3-4x faster in WASM while perceptual CRF prevents 1-pass ABR blockiness
       args.push(
         '-preset',
         'superfast',
@@ -211,9 +237,11 @@ export async function processVideoWithFFmpeg(
       );
 
       if (settings.bitrate === 'wa-1200k') {
-        args.push('-crf', '21', '-maxrate', '1300k', '-bufsize', '2600k');
+        args.push('-crf', '20', '-maxrate', '1350k', '-bufsize', '2700k');
       } else if (settings.bitrate === 'wa-2200k') {
-        args.push('-crf', '19', '-maxrate', '2300k', '-bufsize', '4600k');
+        args.push('-crf', '18', '-maxrate', '2400k', '-bufsize', '4800k');
+      } else if (settings.bitrate === 'wa-3200k') {
+        args.push('-crf', '17', '-maxrate', '3400k', '-bufsize', '6800k');
       } else if (settings.bitrate === 'wa-auto') {
         const maxKbps = computeWhatsAppSweetSpotKbps(
           sourceMeta.durationSec,
@@ -223,19 +251,19 @@ export async function processVideoWithFFmpeg(
         const bufKbps = Math.round(maxKbps * 2);
         args.push(
           '-crf',
-          '20',
+          '18',
           '-maxrate',
           `${maxKbps}k`,
           '-bufsize',
           `${bufKbps}k`,
         );
       } else if (settings.bitrate === 'auto-hd') {
-        args.push('-crf', codec === 'h265' ? '20' : '17', '-maxrate', '9M', '-bufsize', '18M');
+        args.push('-crf', codec === 'h265' ? '19' : '16', '-maxrate', '9M', '-bufsize', '18M');
       } else {
         const rateMap: Record<string, {crf: string; max: string; buf: string}> = {
-          '6m': {crf: '18', max: '6.5M', buf: '13M'},
-          '8m': {crf: '17', max: '8.5M', buf: '17M'},
-          '12m': {crf: '16', max: '12M', buf: '24M'},
+          '6m': {crf: '17', max: '6.5M', buf: '13M'},
+          '8m': {crf: '16', max: '8.5M', buf: '17M'},
+          '12m': {crf: '15', max: '12M', buf: '24M'},
         };
         const r = rateMap[settings.bitrate];
         args.push('-crf', r.crf, '-maxrate', r.max, '-bufsize', r.buf);
@@ -256,7 +284,11 @@ export async function processVideoWithFFmpeg(
     let codecUsed = settings.codec === 'h265' ? 'H.265 (HEVC)' : 'H.264 (AVC)';
     let note: string | undefined;
 
-    callbacks.onStatus(`Mengoptimalkan video (${codecUsed}, mode cepat CRF)...`);
+    callbacks.onStatus(
+      effectiveEnhance === 'strong'
+        ? `Merestorasi detail video buram (${codecUsed})...`
+        : `Mengoptimalkan video (${codecUsed}, mode cepat CRF)...`,
+    );
     let exitCode = await ffmpeg.exec(buildArgs(settings.codec));
 
     if (exitCode !== 0 && settings.codec === 'h265') {
@@ -333,8 +365,8 @@ export async function processVideoWithFFmpeg(
 
 /**
  * Hybrid Optimizer:
- * 1. Tries hardware-accelerated WebCodecs GPU pipeline (Mediabunny) first — 10-30x faster!
- * 2. Seamlessly falls back to tuned FFmpeg WASM (superfast + perceptual CRF) if WebCodecs is unavailable.
+ * 1. Tries hardware-accelerated WebCodecs GPU pipeline + WebGL2 CAS/Deblock shader first — 10-30x faster!
+ * 2. Seamlessly falls back to tuned FFmpeg WASM (superfast + perceptual CRF + hqdn3d/unsharp) if WebCodecs is unavailable.
  */
 export async function optimizeVideoFast(
   sourceFile: File,

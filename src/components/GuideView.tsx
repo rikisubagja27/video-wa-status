@@ -121,16 +121,16 @@ export const GuideView: React.FC = () => {
         </div>
         <div className="space-y-3 text-sm text-slate-300 leading-relaxed">
           <p>
-            Tidak ada aplikasi, ekstensi, ataupun bot otomatis yang dapat memaksa server WhatsApp menonaktifkan kompresi Status sepenuhnya (bot tidak resmi juga melanggar aturan WhatsApp dan berisiko memblokir nomor Anda). Namun Anda dapat memaksimalkan ketajaman dengan dua jalur berikut:
+            Tidak ada aplikasi, ekstensi, ataupun bot otomatis yang dapat memaksa server WhatsApp menonaktifkan kompresi Status sepenuhnya (bot tidak resmi juga melanggar aturan WhatsApp dan berisiko memblokir nomor Anda). Namun aplikasi ini memakai <strong>Restorasi GPU (Deblock + Contrast-Adaptive Sharpening)</strong> untuk memperbaiki video yang awalnya buram sebelum dikirim, lalu memaksimalkan ketajaman lewat dua jalur berikut:
           </p>
           <p>
-            <strong>1. Trik Chat HD &rarr; Teruskan ke Status (1080p):</strong> Optimalkan video dengan preset <strong>Full HD 1080p</strong> lalu simpan ke Foto. Buka chat <strong>Pesan ke Diri Sendiri</strong> di WhatsApp, pilih video, aktifkan tombol <strong>HD</strong> di bagian atas, lalu kirim. Setelah terkirim, tahan video tersebut &rarr; pilih <strong>Teruskan (Forward) &rarr; Status Saya</strong>.
+            <strong>1. Trik Chat HD &rarr; Teruskan ke Status (1080p Paling Tajam):</strong> Pilih preset <strong>Pulihkan Video Buram &rarr; Full HD 1080p</strong> (atau <strong>WA Status HD Tajam</strong>) lalu simpan ke Foto. Buka chat <strong>Pesan ke Diri Sendiri</strong> di WhatsApp, pilih video, aktifkan tombol <strong>HD</strong> di bagian atas, lalu kirim. Setelah terkirim, tahan video tersebut &rarr; pilih <strong>Teruskan (Forward) &rarr; Status Saya</strong>.
           </p>
           <p>
-            <strong>2. Upload Langsung ke Tab Status (720p 1.2–2.2 Mbps):</strong> Untuk upload langsung ke tab Status tanpa lewat chat, gunakan preset <strong>WA Status Anti-Buram (720p 30fps CFR)</strong> agar ukuran dan resolusi sudah sesuai batas internal WhatsApp sehingga tidak diturunkan secara kasar.
+            <strong>2. Upload Langsung ke Tab Status (2.2–3.2 Mbps · &le; 12 MB):</strong> Jika langsung upload ke tab Status, gunakan preset <strong>WA Status HD Optimal</strong> atau <strong>HD 720p</strong> dengan penajaman GPU aktif agar piksel sumber tetap padat dan tidak menjadi bubur saat dikompresi ulang oleh WhatsApp.
           </p>
           <p className="text-xs text-slate-400">
-            Tips wajib iPhone: unggah lewat aplikasi WhatsApp utama (bukan Share Sheet Safari) pada koneksi <strong>Wi-Fi yang stabil</strong> dengan <strong>Mode Daya Rendah (Low Power Mode) dimatikan</strong>.
+            Tips wajib iPhone: unggah lewat aplikasi WhatsApp utama dari <strong>Foto</strong> (bukan Share Sheet Safari) pada koneksi <strong>Wi-Fi yang stabil</strong>, matikan <strong>Mode Daya Rendah (Low Power Mode)</strong>, dan pastikan di <em>Pengaturan &gt; Foto</em> opsi <strong>Unduh &amp; Simpan File Asli</strong> aktif agar tidak mengunggah preview iCloud yang buram.
           </p>
         </div>
       </section>

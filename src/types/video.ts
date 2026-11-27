@@ -1,6 +1,12 @@
 export type TabId = 'home' | 'optimizer' | 'history' | 'guide' | 'settings';
 
-export type QualityPreset = 'wa-sweetspot' | 'original' | '1080p' | '720p' | '4k';
+export type QualityPreset =
+  | 'wa-sweetspot'
+  | 'restore-hd'
+  | 'original'
+  | '1080p'
+  | '720p'
+  | '4k';
 
 export type VideoCodec = 'h264' | 'h265';
 
@@ -9,6 +15,7 @@ export type AudioMode = 'aac-192' | 'aac-128' | 'copy';
 export type BitrateMode =
   | 'wa-1200k'
   | 'wa-2200k'
+  | 'wa-3200k'
   | 'wa-auto'
   | 'auto-hd'
   | '6m'
@@ -16,6 +23,8 @@ export type BitrateMode =
   | '12m';
 
 export type FpsOption = 'original' | '30' | '60';
+
+export type EnhanceLevel = 'off' | 'balanced' | 'strong';
 
 export interface VideoMetadata {
   name: string;
@@ -47,6 +56,7 @@ export interface OptimizationRecommendation {
   recommendedCodec: VideoCodec;
   recommendedBitrate: BitrateMode;
   recommendedFps: FpsOption;
+  recommendedEnhance: EnhanceLevel;
   headline: string;
   reasons: string[];
   statusDurationWarning: string | null;
@@ -61,6 +71,7 @@ export interface OptimizationSettings {
   fps: FpsOption;
   enforceCfr: boolean;
   lanczosSharpen: boolean;
+  enhanceLevel: EnhanceLevel;
 }
 
 export interface OptimizationResult {

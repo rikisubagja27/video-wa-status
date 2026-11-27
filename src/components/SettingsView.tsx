@@ -8,6 +8,7 @@ import type {
 } from '../types/video';
 import {resetFFmpegInstance} from '../utils/ffmpegProcessor';
 import {clearTempWorkspace} from '../utils/storage';
+import {isWebCodecsSupported} from '../utils/webcodecsProcessor';
 
 interface SettingsViewProps {
   appSettings: AppSettings;
@@ -151,8 +152,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               }
               className="w-full min-h-[44px] rounded-xl bg-[#101820] border border-white/15 px-3 text-sm text-white focus:outline-none focus:border-emerald-500"
             >
-              <option value="wa-auto">WA Status Anti-Pecah (&le; 14.5 MB)</option>
-              <option value="auto-hd">Otomatis HD (CRF 19)</option>
+              <option value="wa-1200k">1.2 Mbps (Anti-Buram Status WA · &le; 4.5 MB)</option>
+              <option value="wa-2200k">2.2 Mbps (720p Tajam · Klip &le; 20 Detik)</option>
+              <option value="wa-auto">Otomatis Sweet Spot</option>
+              <option value="auto-hd">Otomatis HD (Untuk Chat HD / Arsip)</option>
               <option value="6m">6 Mbps</option>
               <option value="8m">8 Mbps</option>
               <option value="12m">12 Mbps</option>
@@ -172,7 +175,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
         <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 border-t border-white/10 pt-4 text-sm">
           <div>
-            <dt className="text-xs text-slate-400">WebAssembly (FFmpeg Lokal)</dt>
+            <dt className="text-xs text-slate-400">Akselerasi GPU WebCodecs</dt>
+            <dd className="mt-1 font-medium text-emerald-300">
+              {isWebCodecsSupported() ? 'Aktif (Pemrosesan Cepat Hardware)' : 'Tidak Tersedia (Pakai FFmpeg WASM)'}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs text-slate-400">WebAssembly (FFmpeg Fallback)</dt>
             <dd className="mt-1 font-medium text-white">
               {capabilities.supportsWasm ? 'Didukung' : 'Tidak Didukung'}
             </dd>

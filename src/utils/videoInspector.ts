@@ -320,15 +320,15 @@ export function buildRecommendation(
       ? `Durasi video ${formatDuration(meta.durationSec)} melebihi batas 30 detik per klip WhatsApp Status. WhatsApp akan memotong video secara otomatis saat diunggah.`
       : null;
 
-  // Only preserve directly when already MP4 H.264 within WhatsApp Status bitrate/size sweet spot
+  // Only preserve directly when already MP4 H.264 within WhatsApp Status native 720p envelope
   if (
     isMP4 &&
     isH264 &&
-    shortSide <= 1080 &&
-    longSide <= 1920 &&
+    shortSide <= 720 &&
+    longSide <= 1280 &&
     bitrateMbps > 0 &&
-    bitrateMbps <= 5.5 &&
-    mbSize <= 14.8
+    bitrateMbps <= 2.4 &&
+    mbSize <= 8.5
   ) {
     return {
       recommendedMode: 'preserve',
@@ -336,49 +336,49 @@ export function buildRecommendation(
       recommendedCodec: 'h264',
       recommendedBitrate: appSettings.defaultBitrate,
       recommendedFps: 'original',
-      headline: 'Gunakan Original Preserve Mode (Sudah di Titik Optimal WA Status)',
+      headline: 'Gunakan Original Preserve Mode (Sudah di Titik Optimal Status WA)',
       reasons: [
-        'Video sudah berformat MP4 H.264 dengan ukuran di bawah ambang batas kompresi berat WhatsApp (~15 MB).',
-        'Tidak perlu encoding ulang agar ketajaman, bitrate, dan audio asli tetap terjaga.',
+        'Video sudah berformat MP4 H.264 720p dengan bitrate dan ukuran yang sesuai batas Status WhatsApp.',
+        'Tidak perlu encoding ulang agar ketajaman teks, detail wajah, dan audio asli tidak rusak.',
       ],
       statusDurationWarning,
     };
   }
 
   const reasons: string[] = [];
-  if (mbSize > 14.8 || bitrateMbps > 5.5) {
+  if (shortSide > 720) {
     reasons.push(
-      `Ukuran (${mbSize.toFixed(1)} MB) atau bitrate (${bitrateMbps.toFixed(1)} Mbps) melebihi zona aman WhatsApp Status (~15 MB). Mode Anti-Pecah mengunci bitrate presisi agar WhatsApp tidak mengompres ulang secara brutal.`,
+      `WhatsApp Status tidak memiliki mode HD penuh dan hampir selalu menurunkan video ${meta.width}×${meta.height} ke 720p dengan kompresi kasar. Pre-scale bersih ke 720p terlebih dahulu mencegah hasil buram.`,
     );
   }
-  if (shortSide > 1080) {
+  if (bitrateMbps > 2.4 || mbSize > 8.5) {
     reasons.push(
-      `Resolusi sumber ${meta.width}×${meta.height} akan di-downscale dengan filter Lanczos ke Full HD 1080p tanpa mengorbankan detail.`,
+      `Ukuran (${mbSize.toFixed(1)} MB) atau bitrate (${bitrateMbps.toFixed(1)} Mbps) akan dipangkas paksa oleh WhatsApp. Mengunci bitrate di 1.2–2.2 Mbps (30 fps CFR) menghasilkan video jauh lebih bersih setelah diunggah.`,
     );
   }
   if (isHEVC || meta.container.includes('MOV')) {
     reasons.push(
-      'Video iPhone MOV/HEVC sering memakai Variable Frame Rate (VFR) & HDR yang membuat gerakan patah-patah saat diunggah. Konversi ke H.264 CFR + BT.709 menjaga gerakan mulus.',
-    );
-  }
-  if (caps.isIOS && shortSide > 1080) {
-    reasons.push(
-      'Perangkat iPhone terdeteksi: profil 1080p/720p jauh lebih stabil untuk memori Safari dibanding 4K.',
+      'Video iPhone MOV/HEVC memakai Variable Frame Rate (VFR) & warna HDR yang sering menjadi buram dan patah-patah saat diproses WhatsApp. Konversi ke H.264 SDR 30fps CFR menjaga kestabilan.',
     );
   }
   if (reasons.length === 0) {
     reasons.push(
-      'Profil WA Status Anti-Pecah (H.264 High + CFR + BT.709) mengoptimalkan alokasi bit per frame agar video tetap tajam dan mulus setelah diunggah.',
+      'Profil 720p 30fps CFR (H.264 High) menyamakan format sumber dengan batas internal Status WhatsApp agar tidak terkena kompresi ulang berat.',
     );
   }
+
+  const recommendedBitrate = meta.durationSec > 18 ? 'wa-1200k' : 'wa-2200k';
 
   return {
     recommendedMode: 'optimize',
     recommendedPreset: 'wa-sweetspot',
     recommendedCodec: 'h264',
-    recommendedBitrate: 'wa-auto',
-    recommendedFps: meta.durationSec > 18 ? '30' : meta.fps && meta.fps >= 50 ? '60' : '30',
-    headline: 'Rekomendasi Utama: Mode WA Status Anti-Pecah (Target <= 14.5 MB, CFR)',
+    recommendedBitrate,
+    recommendedFps: '30',
+    headline:
+      meta.durationSec > 18
+        ? 'Rekomendasi: WA Status Anti-Buram (720p · 30fps CFR · 1.2 Mbps)'
+        : 'Rekomendasi: WA Status Anti-Buram (720p · 30fps CFR · 2.2 Mbps)',
     reasons,
     statusDurationWarning,
   };

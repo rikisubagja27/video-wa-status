@@ -26,9 +26,10 @@ import type {
 import {
   computeTargetDimensions,
   computeWhatsAppSweetSpotKbps,
-  processVideoWithFFmpeg,
+  optimizeVideoFast,
   resetFFmpegInstance,
 } from '../utils/ffmpegProcessor';
+import {isWebCodecsSupported} from '../utils/webcodecsProcessor';
 import {
   formatBitrate,
   formatBytes,
@@ -111,7 +112,6 @@ export const OptimizerView: React.FC<OptimizerViewProps> = ({
     metadata.width,
     metadata.height,
     settings.quality,
-    metadata.durationSec,
   );
   const targetAudioKbps = settings.audio === 'aac-128' ? 128 : 192;
   const sweetSpotKbps = computeWhatsAppSweetSpotKbps(
@@ -155,19 +155,23 @@ export const OptimizerView: React.FC<OptimizerViewProps> = ({
       return;
     }
 
-    if (!capabilities.supportsWasm) {
+    if (!isWebCodecsSupported() && !capabilities.supportsWasm) {
       setProcessError(
-        'Browser ini tidak mendukung WebAssembly untuk pemrosesan FFmpeg lokal. Gunakan Original Preserve Mode untuk membagikan file asli tanpa encoding ulang.',
+        'Browser ini tidak mendukung WebCodecs maupun WebAssembly. Gunakan Original Preserve Mode untuk membagikan file asli tanpa encoding ulang.',
       );
       return;
     }
 
     setIsProcessing(true);
     setProgress(0);
-    setStatusMessage('Menginisialisasi FFmpeg WebAssembly lokal...');
+    setStatusMessage(
+      isWebCodecsSupported()
+        ? 'Mengaktifkan akselerasi GPU perangkat...'
+        : 'Menginisialisasi FFmpeg WebAssembly lokal...',
+    );
 
     try {
-      const processed = await processVideoWithFFmpeg(sourceFile, metadata, settings, {
+      const processed = await optimizeVideoFast(sourceFile, metadata, settings, {
         onProgress: setProgress,
         onStatus: setStatusMessage,
       });
@@ -199,11 +203,8 @@ export const OptimizerView: React.FC<OptimizerViewProps> = ({
   }> = [
     {
       id: 'wa-sweetspot',
-      label: 'WA Status Anti-Pecah',
-      detail:
-        metadata.durationSec > 24
-          ? '720p Lanczos + CFR + Target <= 14.5 MB (hindari pecah di klip panjang)'
-          : '1080p Lanczos + CFR + Target <= 14.5 MB (sweet spot Status WA)',
+      label: 'WA Status Anti-Buram (720p)',
+      detail: '720p 30fps CFR + 1.2–2.2 Mbps (menghindari resizer buram WhatsApp Status)',
     },
     {
       id: 'original',
@@ -241,7 +242,7 @@ export const OptimizerView: React.FC<OptimizerViewProps> = ({
       : 0;
 
   const resultSizeMb = result ? result.sizeBytes / (1024 * 1024) : 0;
-  const isResultInWaSafeZone = resultSizeMb > 0 && resultSizeMb <= 15.5;
+  const isResultInWaSafeZone = resultSizeMb > 0 && resultSizeMb <= 8.5;
 
   return (
     <div className="space-y-6">
@@ -313,7 +314,7 @@ export const OptimizerView: React.FC<OptimizerViewProps> = ({
               )}
             </div>
             <p className="mt-1.5 text-xs text-slate-300 leading-relaxed">
-              Menstabilkan frame rate (CFR), mengunci bitrate di zona aman Status WA (&le; 14.5 MB), dan menyamakan warna BT.709 agar tidak pecah &amp; patah-patah.
+              Menyamakan resolusi &amp; bitrate dengan batas Status WA (720p 30fps CFR · H.264 SDR) agar server WA tidak mengompres ulang secara buram.
             </p>
           </button>
         </div>
@@ -449,10 +450,12 @@ export const OptimizerView: React.FC<OptimizerViewProps> = ({
                 }
                 className="w-full min-h-[44px] rounded-xl bg-[#101820] border border-white/15 px-3 text-sm text-white focus:outline-none focus:border-emerald-500"
               >
+                <option value="wa-1200k">1.2 Mbps (Anti-Buram Status WA · &le; 4.5 MB)</option>
+                <option value="wa-2200k">2.2 Mbps (720p Tajam · Klip &le; 20 Detik)</option>
                 <option value="wa-auto">
-                  Anti-Pecah WA (&le; 14.5 MB · ~{(sweetSpotKbps / 1000).toFixed(1)} Mbps)
+                  Otomatis Sweet Spot (~{(sweetSpotKbps / 1000).toFixed(1)} Mbps)
                 </option>
-                <option value="auto-hd">Otomatis HD (CRF 19 · Maks 8 Mbps)</option>
+                <option value="auto-hd">Otomatis HD (Untuk Chat HD / Arsip)</option>
                 <option value="6m">6 Mbps (VBV Terkendali)</option>
                 <option value="8m">8 Mbps (HD Tajam)</option>
                 <option value="12m">12 Mbps (Maksimum Lokal)</option>
@@ -648,13 +651,13 @@ export const OptimizerView: React.FC<OptimizerViewProps> = ({
             <div className="space-y-1">
               <p className="font-semibold">
                 {isResultInWaSafeZone
-                  ? `Zona Aman Status WhatsApp (${formatBytes(result.sizeBytes)} <= 15.5 MB)`
-                  : `Ukuran Output Besar (${formatBytes(result.sizeBytes)} > 15.5 MB)`}
+                  ? `Zona Optimal Status WA (${formatBytes(result.sizeBytes)} <= 8.5 MB)`
+                  : `Ukuran Output ${formatBytes(result.sizeBytes)} (> 8.5 MB)`}
               </p>
               <p className="opacity-90">
                 {isResultInWaSafeZone
-                  ? 'File sudah dioptimalkan dengan H.264 High, CFR, dan BT.709 di bawah ambang kompresi agresif Status WA. Saat masuk ke editor WhatsApp, ketuk ikon HD (jika tampil) sebelum mengirim.'
-                  : 'File di atas 15.5 MB tetap berisiko dikompres ulang secara berat oleh WhatsApp. Jika hasil Status masih pecah, pilih preset WA Status Anti-Pecah.'}
+                  ? 'Ukuran & profil 720p H.264 sudah sesuai ambang Status WhatsApp sehingga tidak perlu diturunkan paksa oleh resizer kasar WhatsApp.'
+                  : 'File di atas 8.5 MB untuk Status WA berisiko dikompres ulang cukup berat saat upload. Jika Status masih terlihat buram, coba gunakan preset WA Status Anti-Buram (720p) + bitrate 1.2 Mbps.'}
               </p>
             </div>
           </div>
@@ -776,10 +779,10 @@ export const OptimizerView: React.FC<OptimizerViewProps> = ({
           </div>
 
           <div className="rounded-xl bg-[#101820] border border-white/10 p-4 text-xs text-slate-300 space-y-1.5">
-            <p className="font-semibold text-white">Tips Penting Saat Upload di iPhone WhatsApp:</p>
-            <p>1. Simpan video hasil ke Galeri Foto iPhone terlebih dahulu (atau bagikan langsung via Web Share), lalu unggah lewat tab <strong>Pembaruan (Status)</strong> langsung di aplikasi WhatsApp.</p>
-            <p>2. Di layar pratinjau Status WhatsApp, periksa apakah ada tombol <strong>HD</strong> di bagian atas — ketuk dan pilih <strong>Kualitas HD</strong> sebelum mengirim.</p>
-            <p>3. Di WhatsApp &rarr; Pengaturan &rarr; Penyimpanan dan data &rarr; Kualitas unggahan media, pilih <strong>Kualitas HD</strong>. (WhatsApp tetap menerapkan pemrosesan servernya sendiri, namun file &le; 14.5 MB CFR H.264 ini meminimalkan kompresi ulang yang membuat video pecah &amp; patah-patah.)</p>
+            <p className="font-semibold text-white">Agar Status Tidak Buram Saat Diupload di iPhone:</p>
+            <p>1. <strong>Simpan ke Foto terlebih dahulu:</strong> Berbagi langsung lewat Share Sheet Safari sering memakai kompresi ekstensi iOS. Simpan MP4 ke <strong>Foto (Photos)</strong> lalu buka WhatsApp &rarr; <strong>Pembaruan / Status</strong> &rarr; pilih dari Galeri.</p>
+            <p>2. <strong>Upload lewat Wi-Fi Stabil &amp; Matikan Mode Daya Rendah:</strong> WhatsApp otomatis menurunkan kualitas upload secara drastis apabila mendeteksi sinyal seluler lambat atau Low Power Mode iPhone aktif.</p>
+            <p>3. <strong>Fakta Kompresi Status WA:</strong> Berbeda dengan Chat biasa, fitur Status WhatsApp di sebagian besar versi belum menyediakan tombol HD dan selalu memproses ulang di server sekitar 720p / ~1–1.5 Mbps. Memilih preset <strong>720p · 1.2–2.2 Mbps</strong> mencegah penurunan resolusi ganda yang bikin buram.</p>
           </div>
 
           {/* Export Buttons */}

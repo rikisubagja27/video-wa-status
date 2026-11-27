@@ -5,7 +5,8 @@ import path from 'path';
 import {defineConfig, type ViteDevServer} from 'vite';
 import {VitePWA} from 'vite-plugin-pwa';
 
-const FFMPEG_ESM_DIR = path.resolve(__dirname, 'node_modules/@ffmpeg/core/dist/esm');
+const ROOT_DIR = import.meta.dirname;
+const FFMPEG_ESM_DIR = path.resolve(ROOT_DIR, 'node_modules/@ffmpeg/core/dist/esm');
 const CHUNK_COUNT = 2; // Splits 32.2 MB wasm into two ~16.1 MB files (< 25 MiB Cloudflare Pages limit)
 
 export default defineConfig(() => {
@@ -58,6 +59,7 @@ export default defineConfig(() => {
           ],
         },
         workbox: {
+          maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
           globIgnores: ['**/ffmpeg/**', '**/_headers'],
           navigateFallback: '/index.html',
@@ -148,7 +150,7 @@ export default defineConfig(() => {
         },
         closeBundle(error?: Error): void {
           if (error) return;
-          const distDir = path.resolve(__dirname, 'dist');
+          const distDir = path.resolve(ROOT_DIR, 'dist');
           const distFfmpegDir = path.join(distDir, 'ffmpeg');
           const srcJs = path.join(FFMPEG_ESM_DIR, 'ffmpeg-core.js');
           const srcWasm = path.join(FFMPEG_ESM_DIR, 'ffmpeg-core.wasm');
@@ -180,8 +182,8 @@ export default defineConfig(() => {
           if (error) {
             return;
           }
-          const distDir = path.resolve(__dirname, 'dist');
-          const srcAssets = path.resolve(__dirname, 'src/assets');
+          const distDir = path.resolve(ROOT_DIR, 'dist');
+          const srcAssets = path.resolve(ROOT_DIR, 'src/assets');
           const distAssets = path.resolve(distDir, 'src/assets');
           if (fs.existsSync(distDir) && fs.existsSync(srcAssets)) {
             fs.cpSync(srcAssets, distAssets, {recursive: true, force: true});
@@ -194,7 +196,7 @@ export default defineConfig(() => {
     },
     resolve: {
       alias: {
-        '@': path.resolve(__dirname, '.'),
+        '@': path.resolve(ROOT_DIR, '.'),
       },
     },
     server: {

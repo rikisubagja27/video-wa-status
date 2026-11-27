@@ -6,7 +6,14 @@ export type VideoCodec = 'h264' | 'h265';
 
 export type AudioMode = 'aac-192' | 'aac-128' | 'copy';
 
-export type BitrateMode = 'wa-auto' | 'auto-hd' | '6m' | '8m' | '12m';
+export type BitrateMode =
+  | 'wa-1200k'
+  | 'wa-2200k'
+  | 'wa-auto'
+  | 'auto-hd'
+  | '6m'
+  | '8m'
+  | '12m';
 
 export type FpsOption = 'original' | '30' | '60';
 

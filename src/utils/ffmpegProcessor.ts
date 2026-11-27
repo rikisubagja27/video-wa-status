@@ -3,91 +3,19 @@ import {toBlobURL} from '@ffmpeg/util';
 import type {
   OptimizationResult,
   OptimizationSettings,
-  QualityPreset,
   VideoMetadata,
 } from '../types/video';
+import {computeTargetDimensions, computeWhatsAppSweetSpotKbps} from './videoMath';
+import {
+  cancelWebCodecsConversion,
+  isWebCodecsSupported,
+  processVideoWithWebCodecs,
+} from './webcodecsProcessor';
+
+export {computeTargetDimensions, computeWhatsAppSweetSpotKbps} from './videoMath';
 
 let ffmpegInstance: FFmpeg | null = null;
 let loadPromise: Promise<FFmpeg> | null = null;
-
-function makeEven(n: number): number {
-  const rounded = Math.round(n);
-  return rounded % 2 === 0 ? Math.max(2, rounded) : Math.max(2, rounded - 1);
-}
-
-export function computeTargetDimensions(
-  sourceW: number,
-  sourceH: number,
-  preset: QualityPreset,
-  durationSec = 15,
-): {width: number; height: number; downscaled: boolean} {
-  if (!sourceW || !sourceH || preset === 'original') {
-    return {
-      width: makeEven(sourceW || 1080),
-      height: makeEven(sourceH || 1920),
-      downscaled: false,
-    };
-  }
-
-  const isPortrait = sourceH >= sourceW;
-  const shortSide = isPortrait ? sourceW : sourceH;
-  const longSide = isPortrait ? sourceH : sourceW;
-
-  let maxShortSide = 1080;
-  let maxLongSide = 1920;
-
-  if (preset === '720p') {
-    maxShortSide = 720;
-    maxLongSide = 1280;
-  } else if (preset === '4k') {
-    maxShortSide = 2160;
-    maxLongSide = 3840;
-  } else if (preset === 'wa-sweetspot') {
-    // For clips > 24s, 720p at 3.5-4 Mbps avoids blockiness; <= 24s keeps full 1080p crispness
-    if (durationSec > 24) {
-      maxShortSide = 720;
-      maxLongSide = 1280;
-    } else {
-      maxShortSide = 1080;
-      maxLongSide = 1920;
-    }
-  }
-
-  // Never upscale
-  if (shortSide <= maxShortSide && longSide <= maxLongSide) {
-    return {
-      width: makeEven(sourceW),
-      height: makeEven(sourceH),
-      downscaled: false,
-    };
-  }
-
-  const scaleFactor = Math.min(maxShortSide / shortSide, maxLongSide / longSide);
-  return {
-    width: makeEven(sourceW * scaleFactor),
-    height: makeEven(sourceH * scaleFactor),
-    downscaled: true,
-  };
-}
-
-/**
- * Computes optimal constrained video bitrate (in kbps) targeting <= 14.5 MB per clip
- * (WhatsApp Status's pre-compression sweet spot) while maintaining visual crispness.
- */
-export function computeWhatsAppSweetSpotKbps(
-  durationSec: number,
-  audioKbps: number,
-  shortSide: number,
-): number {
-  const effectiveDuration = Math.min(Math.max(durationSec || 15, 3), 30);
-  // Target 14.2 MB total file budget so WhatsApp Status avoids harsh macro-compression
-  const targetTotalKbits = 14.2 * 1024 * 8;
-  const budgetVideoKbps = Math.floor(targetTotalKbits / effectiveDuration - audioKbps);
-
-  const maxCap = shortSide >= 1080 ? 5500 : 4200;
-  const minFloor = shortSide >= 1080 ? 2800 : 2200;
-  return Math.max(minFloor, Math.min(maxCap, budgetVideoKbps));
-}
 
 async function buildChunkedWasmBlobURL(): Promise<string> {
   try {
@@ -161,6 +89,7 @@ export async function getFFmpegInstance(
 }
 
 export function resetFFmpegInstance(): void {
+  cancelWebCodecsConversion();
   if (ffmpegInstance) {
     try {
       ffmpegInstance.terminate();
@@ -212,10 +141,8 @@ export async function processVideoWithFFmpeg(
       sourceMeta.width,
       sourceMeta.height,
       settings.quality,
-      sourceMeta.durationSec,
     );
 
-    // Determine effective FPS for GOP alignment and CFR pacing
     let effectiveFps = 30;
     if (settings.fps === '60') {
       effectiveFps = !sourceMeta.fps || sourceMeta.fps >= 50 ? 60 : Math.round(sourceMeta.fps);
@@ -231,22 +158,12 @@ export async function processVideoWithFFmpeg(
     const buildArgs = (codec: 'h264' | 'h265'): string[] => {
       const args: string[] = ['-i', inputFileName];
 
-      // Build video filter pipeline (Lanczos scaling + subtle detail recovery + standardized BT.709 range)
-      const vfParts: string[] = [];
+      // Fast clean scaling without CPU-heavy unsharp noise that causes macroblocking
       if (targetDims.downscaled) {
-        vfParts.push(`scale=${targetDims.width}:${targetDims.height}:flags=lanczos`);
-        if (settings.lanczosSharpen) {
-          vfParts.push('unsharp=3:3:0.35:3:3:0.0');
-        }
-      } else if (settings.lanczosSharpen && settings.quality === 'wa-sweetspot') {
-        vfParts.push('unsharp=3:3:0.25:3:3:0.0');
+        const scaleFlags = settings.lanczosSharpen ? 'lanczos' : 'bicubic';
+        args.push('-vf', `scale=${targetDims.width}:${targetDims.height}:flags=${scaleFlags}`);
       }
 
-      if (vfParts.length > 0) {
-        args.push('-vf', vfParts.join(','));
-      }
-
-      // Constant Frame Rate (CFR) eliminates iPhone MOV VFR stutter after WhatsApp re-encodes
       if (settings.enforceCfr) {
         args.push('-vsync', 'cfr');
       }
@@ -279,10 +196,10 @@ export async function processVideoWithFFmpeg(
         );
       }
 
-      // Use 'fast' instead of 'veryfast' for significantly cleaner motion estimation & fewer block artifacts
+      // superfast is 3-4x faster in WASM while perceptual CRF prevents 1-pass ABR blockiness
       args.push(
         '-preset',
-        'fast',
+        'superfast',
         '-pix_fmt',
         'yuv420p',
         '-colorspace',
@@ -293,32 +210,35 @@ export async function processVideoWithFFmpeg(
         'bt709',
       );
 
-      if (settings.bitrate === 'wa-auto') {
-        const targetKbps = computeWhatsAppSweetSpotKbps(
+      if (settings.bitrate === 'wa-1200k') {
+        args.push('-crf', '21', '-maxrate', '1300k', '-bufsize', '2600k');
+      } else if (settings.bitrate === 'wa-2200k') {
+        args.push('-crf', '19', '-maxrate', '2300k', '-bufsize', '4600k');
+      } else if (settings.bitrate === 'wa-auto') {
+        const maxKbps = computeWhatsAppSweetSpotKbps(
           sourceMeta.durationSec,
           audioKbps,
           targetShortSide,
         );
-        const maxKbps = Math.round(targetKbps * 1.15);
-        const bufKbps = Math.round(targetKbps * 1.5);
+        const bufKbps = Math.round(maxKbps * 2);
         args.push(
-          '-b:v',
-          `${targetKbps}k`,
+          '-crf',
+          '20',
           '-maxrate',
           `${maxKbps}k`,
           '-bufsize',
           `${bufKbps}k`,
         );
       } else if (settings.bitrate === 'auto-hd') {
-        args.push('-crf', codec === 'h265' ? '22' : '19', '-maxrate', '8M', '-bufsize', '12M');
+        args.push('-crf', codec === 'h265' ? '20' : '17', '-maxrate', '9M', '-bufsize', '18M');
       } else {
-        const rateMap: Record<string, {bv: string; max: string; buf: string}> = {
-          '6m': {bv: '6M', max: '7M', buf: '10M'},
-          '8m': {bv: '8M', max: '9.5M', buf: '14M'},
-          '12m': {bv: '12M', max: '14M', buf: '20M'},
+        const rateMap: Record<string, {crf: string; max: string; buf: string}> = {
+          '6m': {crf: '18', max: '6.5M', buf: '13M'},
+          '8m': {crf: '17', max: '8.5M', buf: '17M'},
+          '12m': {crf: '16', max: '12M', buf: '24M'},
         };
         const r = rateMap[settings.bitrate];
-        args.push('-b:v', r.bv, '-maxrate', r.max, '-bufsize', r.buf);
+        args.push('-crf', r.crf, '-maxrate', r.max, '-bufsize', r.buf);
       }
 
       if (settings.audio === 'copy') {
@@ -336,7 +256,7 @@ export async function processVideoWithFFmpeg(
     let codecUsed = settings.codec === 'h265' ? 'H.265 (HEVC)' : 'H.264 (AVC)';
     let note: string | undefined;
 
-    callbacks.onStatus(`Mengoptimalkan video (${codecUsed}, CFR & BT.709)...`);
+    callbacks.onStatus(`Mengoptimalkan video (${codecUsed}, mode cepat CRF)...`);
     let exitCode = await ffmpeg.exec(buildArgs(settings.codec));
 
     if (exitCode !== 0 && settings.codec === 'h265') {
@@ -409,4 +329,33 @@ export async function processVideoWithFFmpeg(
       // Ignore cleanup error
     }
   }
+}
+
+/**
+ * Hybrid Optimizer:
+ * 1. Tries hardware-accelerated WebCodecs GPU pipeline (Mediabunny) first — 10-30x faster!
+ * 2. Seamlessly falls back to tuned FFmpeg WASM (superfast + perceptual CRF) if WebCodecs is unavailable.
+ */
+export async function optimizeVideoFast(
+  sourceFile: File,
+  sourceMeta: VideoMetadata,
+  settings: OptimizationSettings,
+  callbacks: {
+    onProgress: (percent: number) => void;
+    onStatus: (message: string) => void;
+  },
+): Promise<OptimizationResult> {
+  if (isWebCodecsSupported()) {
+    try {
+      return await processVideoWithWebCodecs(sourceFile, sourceMeta, settings, callbacks);
+    } catch (err) {
+      if (err instanceof Error && err.message === 'CANCELLED_BY_USER') {
+        throw new Error('Pemrosesan dibatalkan oleh pengguna.');
+      }
+      callbacks.onStatus('Beralih ke engine FFmpeg WebAssembly lokal...');
+      callbacks.onProgress(0);
+    }
+  }
+
+  return processVideoWithFFmpeg(sourceFile, sourceMeta, settings, callbacks);
 }

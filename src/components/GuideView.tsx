@@ -121,16 +121,16 @@ export const GuideView: React.FC = () => {
         </div>
         <div className="space-y-3 text-sm text-slate-300 leading-relaxed">
           <p>
-            WhatsApp selalu menjalankan pemrosesan sisi server saat video diunggah ke Status. Tidak ada aplikasi pihak ketiga yang dapat menonaktifkan kompresi server WhatsApp sepenuhnya.
+            Berbeda dengan Chat biasa, fitur <strong>Status WhatsApp</strong> pada sebagian besar versi aplikasi tidak memiliki tombol HD dan selalu memproses ulang video di kisaran <strong>720p · 30fps · ~1–1.5 Mbps</strong>.
           </p>
           <p>
-            Video menjadi <strong>pecah</strong> dan <strong>tidak mulus</strong> ketika file yang diunggah melebihi ambang ukuran Status (~15–16 MB), memiliki lonjakan bitrate ekstrem, atau memakai <em>Variable Frame Rate</em> (VFR) &amp; warna HDR bawaan kamera iPhone — sehingga WhatsApp memaksa re-encoding berat ke bitrate rendah dan menjatuhkan frame secara acak.
+            Mengunggah video 1080p/4K berukuran besar (&gt; 10–15 MB) atau 60fps HDR iPhone memicu <em>resizer</em> dan kompresor darurat WhatsApp yang menurunkan resolusi secara kasar dan menjatuhkan bitrate terlalu rendah — inilah penyebab utama Status menjadi <strong>buram</strong>.
           </p>
           <p>
-            Dengan memilih profil <strong>WA Status Anti-Pecah</strong> (H.264 High + Constant Frame Rate + BT.709 + ukuran terkunci &le; 14.5 MB), video sudah berada di titik optimal sebelum menyentuh WhatsApp sehingga ketajaman dan kehalusan gerakan jauh lebih terjaga.
+            Memilih preset <strong>WA Status Anti-Buram (720p · 30fps CFR · 1.2–2.2 Mbps)</strong> menyamakan ukuran frame dan warna SDR (BT.709) sebelum diunggah, sehingga detail teks dan wajah tetap jauh lebih bersih.
           </p>
           <p className="text-xs text-slate-400">
-            Langkah wajib di aplikasi WhatsApp: buka Pengaturan &rarr; Penyimpanan dan data &rarr; Kualitas unggahan media &rarr; pilih <strong>Kualitas HD</strong>, dan ketuk ikon <strong>HD</strong> di layar pratinjau Status jika tersedia sebelum mengirim.
+            Tips iPhone: Simpan MP4 ke Foto lalu unggah langsung dari aplikasi WhatsApp menggunakan <strong>Wi-Fi yang stabil</strong> dengan <strong>Mode Daya Rendah (Low Power Mode) dimatikan</strong>.
           </p>
         </div>
       </section>
